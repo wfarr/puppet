@@ -23,6 +23,79 @@ describe "foo" do
     end
   end
 
+  class ResourceNameMatcher
+    def initialize(expected_name)
+      @expected_name = expected_name
+    end
+
+    def matches?(actual)
+      @expected_name == actual.to_s
+    end
+
+    def to_s()
+      @expected_name
+    end
+  end
+
+  def a_resource_named(name)
+    ResourceNameMatcher.new(name)
+  end
+
+  class ArrayInOrderMatcher
+    def initialize(expected)
+      @expected = expected
+    end
+    def matches?(actual_array)
+      @actual_array = actual_array
+      expected = @expected.dup
+
+      actual_array.each do |actual|
+        if (expected[0].matches?(actual))
+          expected.shift
+          break if expected.empty?
+        end
+      end
+
+      return expected.empty?
+    end
+
+    def failure_message()
+      "Elements in 'expected' array do not appear in order in 'actual' array; expected '#{@expected}', actual '#{@actual_array}'"
+    end
+  end
+
+  def have_items_in_order(*expected)
+    ArrayInOrderMatcher.new(expected)
+  end
+
+  class GraphEdgeMatcher
+    def initialize(from, to)
+      @from = from
+      @to = to
+    end
+    def matches?(graph)
+      @graph = graph
+      graph.edges.any? do |edge|
+        print "Edge type: '#{edge.class}'"
+        puts "Source to_s: '#{edge.source.to_s}'"
+        puts "Source class: '#{edge.source.class}'"
+        puts "Target to_s: '#{edge.target.to_s}'"
+        puts "Target class: '#{edge.target.class}'"
+        pp edge
+        @from.matches?(edge.source) && @to.matches?(edge.target)
+      end
+    end
+
+    def failure_message()
+      "Expected resource '#{@from}' to have an edge to '#{@to}'; actual edges:\n#{@graph.edges.join("\n")}"
+    end
+  end
+
+  def contain_edge(from, to)
+    GraphEdgeMatcher.new(from, to)
+  end
+
+
   def do_eval(manifest)
     rv = EvalResult.new
 
@@ -60,7 +133,8 @@ class foo {
 }
 
 class bar {
-    include foo
+    #include foo
+    require foo
 }
 
 class baz {
@@ -73,8 +147,9 @@ include baz
 MANIFEST
 )
 
-      eval_result.order.should be(["Notify['foo']", "Notify['bar'"])
-      eval_result.graph.should be_contains_edge("Class['Bar']", "Class['Foo']")
+      #eval_result.order.should have_exactly_in_order()
+      eval_result.order.should have_items_in_order(a_resource_named("Notify[foo]"), a_resource_named("Notify[baz]"))
+      #eval_result.graph.should contain_edge(a_resource_named("Class[Bar]"), a_resource_named("Class[Foo]"))
     end
   end
 
