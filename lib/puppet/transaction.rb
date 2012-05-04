@@ -230,14 +230,14 @@ class Puppet::Transaction
 
   # this should only be called by a Puppet::Type::Component resource now
   # and it should only receive an array
-  def initialize(catalog, report = nil)
+  def initialize(catalog, report = nil, harness = nil)
     @catalog = catalog
 
     @report = report || Puppet::Transaction::Report.new("apply", catalog.version, catalog.environment)
 
     @event_manager = Puppet::Transaction::EventManager.new(self)
 
-    @resource_harness = Puppet::Transaction::ResourceHarness.new(self)
+    @resource_harness = harness || Puppet::Transaction::ResourceHarness.new(self)
 
     @prefetched_providers = Hash.new { |h,k| h[k] = {} }
   end

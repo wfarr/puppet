@@ -51,7 +51,7 @@ class Puppet::Transaction::Event
   end
 
   def to_s
-    message
+    message.to_s
   end
 
   def to_yaml_properties
