@@ -83,32 +83,25 @@ describe "foo" do
     return EvaluationResult.new(recorder.order, transaction.relationship_graph)
   end
 
-  describe "bar" do
-    it "should baz" do
-      eval_result = do_eval( <<-MANIFEST
+  it "ensures that a class required by another class is completed first" do
+    eval_result = do_eval(<<-MANIFEST)
+      class base {
+          notify { 'base': }
+      }
 
-class foo {
-    notify { 'foo': }
-}
+      class intermediate {
+          require base
+      }
 
-class bar {
-    #include foo
-    require foo
-}
+      class top {
+          require intermediate
+          notify { "top": }
+      }
 
-class baz {
-    require bar
-    notify { "baz": }
-}
+      include top
+    MANIFEST
 
-include baz
-
-MANIFEST
-)
-
-      #eval_result.order.should have_exactly_in_order()
-      eval_result.order.should have_items_in_order(a_resource_named("Notify[foo]"), a_resource_named("Notify[baz]"))
-      #eval_result.graph.should contain_edge(a_resource_named("Class[Bar]"), a_resource_named("Class[Foo]"))
-    end
+    eval_result.order.should have_items_in_order(a_resource_named("Notify[base]"), a_resource_named("Notify[top]"))
+    #eval_result.graph.should contain_edge(a_resource_named("Class[Bar]"), a_resource_named("Class[Foo]"))
   end
 end
