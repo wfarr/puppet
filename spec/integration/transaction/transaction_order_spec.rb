@@ -53,8 +53,8 @@ describe "foo" do
   include PuppetSpec::Matchers::RAL
   include PuppetSpec::Matchers::Enumerable
 
-  class EvalResult
-    attr_accessor :order, :graph
+  class EvaluationRecorder
+    attr_reader :order
 
     def initialize
       @order = []
@@ -70,22 +70,17 @@ describe "foo" do
     end
   end
 
+  EvaluationResult = Struct.new(:order, :graph)
 
   def do_eval(manifest)
-    rv = EvalResult.new
+    recorder = EvaluationRecorder.new
 
-    catalog = compile_to_catalog(manifest)
-    catalog = catalog.to_ral
-    catalog.host_config = false
+    ral = compile_to_catalog(manifest).to_ral
 
-    catalog.instance_variable_set(:@applying, true)
-
-    transaction = Puppet::Transaction.new(catalog, nil, rv)
+    transaction = Puppet::Transaction.new(ral, nil, recorder)
     transaction.evaluate
 
-    rv.graph = transaction.relationship_graph
-
-    return rv
+    return EvaluationResult.new(recorder.order, transaction.relationship_graph)
   end
 
   describe "bar" do
