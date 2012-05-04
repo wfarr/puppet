@@ -12,6 +12,7 @@ require 'puppet'
 require 'mocha'
 gem 'rspec', '>=2.0.0'
 require 'rspec/expectations'
+require 'rspec/autorun'
 
 # So everyone else doesn't have to include this base constant.
 module PuppetSpec

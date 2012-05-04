@@ -45,3 +45,11 @@ RSpec::Core::RakeTask.new do |t|
     t.pattern ='spec/{unit,integration}/**/*.rb'
     t.fail_on_error = true
 end
+
+desc "Run all specs with rcov"
+RSpec::Core::RakeTask.new("spec:rcov") do |t|
+    t.pattern ='spec/{unit,integration}/**/*.rb'
+    t.fail_on_error = true
+    t.rcov = true
+    t.rcov_opts = %w{-Ispec --include views -Ispec --exclude gems\/,spec\/,features\/,seeds\/}
+end
