@@ -12,6 +12,9 @@ module RSpec
   end
 end
 
+module PuppetSpec::Matchers
+  require 'puppet_spec/matchers/enumerable.rb'
+end
 
 ########################################################################
 # Custom matchers...

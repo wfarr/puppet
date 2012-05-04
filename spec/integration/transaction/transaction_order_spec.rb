@@ -1,26 +1,13 @@
 require 'spec_helper'
 require 'puppet_spec/compiler'
 
-describe "foo" do
-  include PuppetSpec::Compiler
+module PuppetSpec::Matchers::RAL
+  def a_resource_named(name)
+    ResourceNameMatcher.new(name)
+  end
 
-  class EvalResult
-    attr_accessor :order, :graph
-
-    def initialize
-      @order = []
-    end
-
-    def scheduled?(status, resource)
-      return true
-    end
-
-    def evaluate(resource)
-      puts "EVALUATING RESOURCE"
-      pp resource
-      order << resource
-      return Puppet::Resource::Status.new(resource)
-    end
+  def contain_edge(from, to)
+    GraphEdgeMatcher.new(from, to)
   end
 
   class ResourceNameMatcher
@@ -35,37 +22,6 @@ describe "foo" do
     def to_s()
       @expected_name
     end
-  end
-
-  def a_resource_named(name)
-    ResourceNameMatcher.new(name)
-  end
-
-  class ArrayInOrderMatcher
-    def initialize(expected)
-      @expected = expected
-    end
-    def matches?(actual_array)
-      @actual_array = actual_array
-      expected = @expected.dup
-
-      actual_array.each do |actual|
-        if (expected[0].matches?(actual))
-          expected.shift
-          break if expected.empty?
-        end
-      end
-
-      return expected.empty?
-    end
-
-    def failure_message()
-      "Elements in 'expected' array do not appear in order in 'actual' array; expected '#{@expected}', actual '#{@actual_array}'"
-    end
-  end
-
-  def have_items_in_order(*expected)
-    ArrayInOrderMatcher.new(expected)
   end
 
   class GraphEdgeMatcher
@@ -90,9 +46,28 @@ describe "foo" do
       "Expected resource '#{@from}' to have an edge to '#{@to}'; actual edges:\n#{@graph.edges.join("\n")}"
     end
   end
+end
 
-  def contain_edge(from, to)
-    GraphEdgeMatcher.new(from, to)
+describe "foo" do
+  include PuppetSpec::Compiler
+  include PuppetSpec::Matchers::RAL
+  include PuppetSpec::Matchers::Enumerable
+
+  class EvalResult
+    attr_accessor :order, :graph
+
+    def initialize
+      @order = []
+    end
+
+    def scheduled?(status, resource)
+      return true
+    end
+
+    def evaluate(resource)
+      order << resource
+      return Puppet::Resource::Status.new(resource)
+    end
   end
 
 
@@ -106,23 +81,12 @@ describe "foo" do
     catalog.instance_variable_set(:@applying, true)
 
     transaction = Puppet::Transaction.new(catalog, nil, rv)
-
-    begin
-      transaction.evaluate
-      pp "Finished eval"
-    rescue => detail
-      pp "AAAGGGGGGGGGGGGHHHHHH"
-      puts detail
-      puts Puppet::Util.pretty_backtrace(detail.backtrace)
-    ensure
-      pp transaction.report.status
-    end
+    transaction.evaluate
 
     rv.graph = transaction.relationship_graph
 
     return rv
   end
-
 
   describe "bar" do
     it "should baz" do
@@ -152,5 +116,4 @@ MANIFEST
       #eval_result.graph.should contain_edge(a_resource_named("Class[Bar]"), a_resource_named("Class[Foo]"))
     end
   end
-
 end
