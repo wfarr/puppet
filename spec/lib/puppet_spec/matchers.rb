@@ -14,6 +14,7 @@ end
 
 module PuppetSpec::Matchers
   require 'puppet_spec/matchers/enumerable.rb'
+  require 'puppet_spec/matchers/any_of.rb'
 end
 
 ########################################################################
