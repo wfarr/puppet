@@ -42,10 +42,32 @@ module PuppetSpec::Matchers::RAL
   end
 end
 
-describe "foo" do
+describe "Evaluation order" do
   include PuppetSpec::Compiler
   include PuppetSpec::Matchers::RAL
   include PuppetSpec::Matchers::Enumerable
+
+  it "ensures that a class required by another class is completed first" do
+    plan = execution_plan_for(<<-MANIFEST)
+      class base {
+          notify { 'base': }
+      }
+
+      class intermediate {
+          require base
+      }
+
+      class top {
+          require intermediate
+          notify { "top": }
+      }
+
+      include top
+    MANIFEST
+
+    plan.order.should have_items_in_order(a_resource_named("Notify[base]"), a_resource_named("Notify[top]"))
+    #plan.graph.should contain_edge(a_resource_named("Class[Bar]"), a_resource_named("Class[Foo]"))
+  end
 
   class EvaluationRecorder
     attr_reader :order
@@ -64,9 +86,9 @@ describe "foo" do
     end
   end
 
-  EvaluationResult = Struct.new(:order, :graph)
+  ExecutionPlan = Struct.new(:order, :graph)
 
-  def do_eval(manifest)
+  def execution_plan_for(manifest)
     recorder = EvaluationRecorder.new
 
     ral = compile_to_catalog(manifest).to_ral
@@ -74,28 +96,6 @@ describe "foo" do
     transaction = Puppet::Transaction.new(ral, nil, recorder)
     transaction.evaluate
 
-    return EvaluationResult.new(recorder.order, transaction.relationship_graph)
-  end
-
-  it "ensures that a class required by another class is completed first" do
-    eval_result = do_eval(<<-MANIFEST)
-      class base {
-          notify { 'base': }
-      }
-
-      class intermediate {
-          require base
-      }
-
-      class top {
-          require intermediate
-          notify { "top": }
-      }
-
-      include top
-    MANIFEST
-
-    eval_result.order.should have_items_in_order(a_resource_named("Notify[base]"), a_resource_named("Notify[top]"))
-    #eval_result.graph.should contain_edge(a_resource_named("Class[Bar]"), a_resource_named("Class[Foo]"))
+    return ExecutionPlan.new(recorder.order, transaction.relationship_graph)
   end
 end
