@@ -32,12 +32,6 @@ module PuppetSpec::Matchers::RAL
     def matches?(graph)
       @graph = graph
       graph.edges.any? do |edge|
-        print "Edge type: '#{edge.class}'"
-        puts "Source to_s: '#{edge.source.to_s}'"
-        puts "Source class: '#{edge.source.class}'"
-        puts "Target to_s: '#{edge.target.to_s}'"
-        puts "Target class: '#{edge.target.class}'"
-        pp edge
         @from.matches?(edge.source) && @to.matches?(edge.target)
       end
     end
