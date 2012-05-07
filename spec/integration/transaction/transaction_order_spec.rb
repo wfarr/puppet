@@ -46,8 +46,11 @@ describe "Evaluation order" do
   include PuppetSpec::Compiler
   include PuppetSpec::Matchers::RAL
   include PuppetSpec::Matchers::Enumerable
+  include PuppetSpec::Matchers::AnyOf
 
   it "ensures that a class required by another class is completed first" do
+    pending("The edge that forces the order seems to be missing")
+
     plan = execution_plan_for(<<-MANIFEST)
       class base {
           notify { 'base': }
@@ -65,12 +68,20 @@ describe "Evaluation order" do
       include top
     MANIFEST
 
-    plan.order.should have_items_in_order(a_resource_named("Notify[base]"), a_resource_named("Notify[top]"))
-    #plan.graph.should contain_edge_between(a_resource_named("Class[Intermediate]"), a_resource_named("Class[Base]"))
+    plan.order.should plan_to_execute_in_order("Notify[base]", "Notify[top]")
+    plan.graph.should contain_edge_between(a_resource_named("Class[Intermediate]"), a_resource_named("Class[Base]"))
   end
 
   it "does not link a class included by another class in any way" do
     plan = execution_plan_for(<<-MANIFEST)
+      class first {
+          notify { 'first': }
+      }
+
+      class last {
+          notify { "last": }
+      }
+
       class base {
           notify { 'base': }
       }
@@ -81,12 +92,58 @@ describe "Evaluation order" do
       }
 
       include top
+      include first
+      include last
+      Class[First] -> Class[Top] -> Class[Last]
     MANIFEST
 
-    plan.order.should have_items_in_any_order(a_resource_named("Notify[top]"), a_resource_named("Notify[base]"))
+    plan.order.should plan_to_execute_in_any_order("Notify[top]", "Notify[base]")
 
     plan.graph.should_not contain_edge_between(a_resource_named("Class[Base]"), a_resource_named("Class[Top]"))
     plan.graph.should_not contain_edge_between(a_resource_named("Class[Top]"), a_resource_named("Class[Base]"))
+  end
+
+  it "does not link a class included by another class in any way" do
+    pending("Need to implement contains()")
+
+    plan = execution_plan_for(<<-MANIFEST)
+      class first {
+          notify { 'first': }
+      }
+
+      class last {
+          notify { "last": }
+      }
+
+      class container {
+        contains contained
+        notify { 'container': }
+      }
+
+      class contained {
+        notify { 'contained': }
+      }
+
+      include first
+      include container
+      include last
+
+      Class[First] -> Class[Container] -> Class[Last]
+    MANIFEST
+
+    plan.order.should any_of(
+      plan_to_execute_in_order("Notify[first]", "Notify[container]", "Notify[contained]", "Notify[last]"),
+      plan_to_execute_in_order("Notify[first]", "Notify[contained]", "Notify[container]", "Notify[last]"))
+  end
+
+  def plan_to_execute_in_order(*names)
+    resources = names.collect { |name| a_resource_named(name) }
+    have_items_in_order(*resources)
+  end
+
+  def plan_to_execute_in_any_order(*names)
+    resources = names.collect { |name| a_resource_named(name) }
+    have_items_in_any_order(*resources)
   end
 
   class EvaluationRecorder
