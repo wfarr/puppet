@@ -6,7 +6,7 @@ module PuppetSpec::Matchers::RAL
     ResourceNameMatcher.new(name)
   end
 
-  def contain_edge(from, to)
+  def contain_edge_between(from, to)
     GraphEdgeMatcher.new(from, to)
   end
 
@@ -66,7 +66,27 @@ describe "Evaluation order" do
     MANIFEST
 
     plan.order.should have_items_in_order(a_resource_named("Notify[base]"), a_resource_named("Notify[top]"))
-    #plan.graph.should contain_edge(a_resource_named("Class[Bar]"), a_resource_named("Class[Foo]"))
+    #plan.graph.should contain_edge_between(a_resource_named("Class[Intermediate]"), a_resource_named("Class[Base]"))
+  end
+
+  it "does not link a class included by another class in any way" do
+    plan = execution_plan_for(<<-MANIFEST)
+      class base {
+          notify { 'base': }
+      }
+
+      class top {
+          include base
+          notify { "top": }
+      }
+
+      include top
+    MANIFEST
+
+    plan.order.should have_items_in_any_order(a_resource_named("Notify[top]"), a_resource_named("Notify[base]"))
+
+    plan.graph.should_not contain_edge_between(a_resource_named("Class[Base]"), a_resource_named("Class[Top]"))
+    plan.graph.should_not contain_edge_between(a_resource_named("Class[Top]"), a_resource_named("Class[Base]"))
   end
 
   class EvaluationRecorder
