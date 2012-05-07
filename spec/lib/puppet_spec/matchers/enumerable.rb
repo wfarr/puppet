@@ -1,17 +1,22 @@
 module PuppetSpec::Matchers::Enumerable
   def have_items_in_order(*expected)
-    EnumerableInOrderMatcher.new(expected)
+    EnumerableItemsInOrderMatcher.new(expected)
   end
 
-  class EnumerableInOrderMatcher
+  def have_items_in_any_order(*expected)
+    EnumerableItemsInAnyOrderMatcher.new(expected)
+  end
+
+  class EnumerableItemsInOrderMatcher
     def initialize(expected)
       @expected = expected
     end
-    def matches?(actual_array)
-      @actual_array = actual_array
+
+    def matches?(actual)
+      @actual = actual
       expected = @expected.dup
 
-      actual_array.each do |actual|
+      actual.each do |actual|
         if (expected[0].matches?(actual))
           expected.shift
           break if expected.empty?
@@ -22,7 +27,34 @@ module PuppetSpec::Matchers::Enumerable
     end
 
     def failure_message()
-      "Elements in 'expected' array do not appear in order in 'actual' array; expected '#{@expected}', actual '#{@actual_array}'"
+      "Elements in 'expected' do not appear in order in 'actual'; expected '#{@expected}', actual '#{@actual}'"
+    end
+  end
+
+  class EnumerableItemsInAnyOrderMatcher
+    def initialize(expected)
+      @expected = expected
+    end
+
+    def matches?(actual)
+      @actual = actual
+      expected = @expected.dup
+
+      actual.each do |actual|
+        match = expected.find do |matcher|
+          matcher.matches?(actual)
+        end
+
+        if (match)
+          expected.delete(match)
+        end
+      end
+
+      return expected.empty?
+    end
+
+    def failure_message()
+      "Elements in 'expected' do not appear in 'actual'; expected '#{@expected}', actual '#{@actual}'"
     end
   end
 end
