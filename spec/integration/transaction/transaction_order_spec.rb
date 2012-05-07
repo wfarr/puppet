@@ -99,8 +99,9 @@ describe "Evaluation order" do
 
     plan.order.should execute_in_any_order("Notify[top]", "Notify[base]")
 
-    plan.graph.should_not have_a_dependency_between("Class[Base]", "Class[Top]")
-    plan.graph.should_not have_a_dependency_between("Class[Top]", "Class[Base]")
+    plan.graph.should_not any_of(
+      have_a_dependency_between("Class[Base]", "Class[Top]"),
+      have_a_dependency_between("Class[Top]", "Class[Base]"))
   end
 
   it "ensures that a contained element occurs after anything the container requires and before anything that requires the container" do
@@ -140,70 +141,70 @@ describe "Evaluation order" do
     pending("Need to implement contains()")
 
     plan = execution_plan_for(<<-MANIFEST)
-      class first {
-          notify { 'first': }
+      class apt_repo {
+          notify { 'apt_repo': }
       }
 
-      class module_top {
-        contains contained
-        notify { 'container': }
+      class ssh::server {
+        contains ssh::common
+        notify { 'ssh::server': }
       }
 
-      class module_diff_top {
-        contains contained
-        notify { 'other_container': }
+      class ssh::keys {
+        contains ssh::common
+        notify { 'ssh::client': }
       }
 
-      class module_part {
-        notify { 'contained': }
+      class ssh::common {
+        notify { 'ssh::common': }
       }
 
-      include first
-      include container
-      include diff_container
+      include ssh::server
+      include ssh::keys
+      include apt_repo
 
-      Class[First] -> Class[Container]
+      Class[apt_repo] -> Class[ssh::server]
     MANIFEST
 
     plan.order.should all_of(
-      execute_in_order("Notify[first]", "Notify[module_part]"),
-      execute_in_order("Notify[first]", "Notify[module_top]"),
-      execute_in_order("Notify[first]", "Notify[module_diff_top]"))
+      execute_in_order("Notify[apt_repo]", "Notify[ssh::server]"),
+      execute_in_order("Notify[apt_repo]", "Notify[ssh::common]"),
+      execute_in_any_order("Notify[apt_repo]", "Notify[ssh::keys]"))
   end
 
   it "ensures that an element contained by multiple containers happens before all dependents on the containers" do
     pending("Need to implement contains()")
 
     plan = execution_plan_for(<<-MANIFEST)
-      class last {
-        notify { 'last': }
+      class uses_ssh {
+          notify { 'uses_ssh': }
       }
 
-      class module_top {
-        contains contained
-        notify { 'container': }
+      class ssh::server {
+        contains ssh::common
+        notify { 'ssh::server': }
       }
 
-      class module_diff_top {
-        contains contained
-        notify { 'other_container': }
+      class ssh::keys {
+        contains ssh::common
+        notify { 'ssh::client': }
       }
 
-      class module_part {
-        notify { 'contained': }
+      class ssh::common {
+        notify { 'ssh::common': }
       }
 
-      include first
-      include container
-      include diff_container
+      include uses_ssh
+      include ssh::server
+      include ssh::keys
 
-      Class[Container] -> Class[Last]
+      Class[ssh::server] -> Class[uses_ssh]
     MANIFEST
 
     plan.order.should all_of(
-      execute_in_order("Notify[module_part]", "Notify[last]"),
-      execute_in_order("Notify[module_top]", "Notify[last]"),
-      execute_in_order("Notify[module_diff_top]", "Notify[last]"))
+      execute_in_order("Notify[ssh::server]", "Notify[uses_ssh]"),
+      execute_in_order("Notify[ssh::common]", "Notify[uses_ssh]"),
+      execute_in_any_order("Notify[uses_ssh]", "Notify[ssh::keys]"))
   end
 
   def execute_in_order(*names)
