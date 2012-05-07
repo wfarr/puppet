@@ -68,7 +68,7 @@ describe "Evaluation order" do
       include top
     MANIFEST
 
-    plan.order.should plan_to_execute_in_order("Notify[base]", "Notify[top]")
+    plan.order.should execute_in_order("Notify[base]", "Notify[top]")
     plan.graph.should have_a_dependency_between("Class[Intermediate]", "Class[Base]")
   end
 
@@ -97,13 +97,46 @@ describe "Evaluation order" do
       Class[First] -> Class[Top] -> Class[Last]
     MANIFEST
 
-    plan.order.should plan_to_execute_in_any_order("Notify[top]", "Notify[base]")
+    plan.order.should execute_in_any_order("Notify[top]", "Notify[base]")
 
     plan.graph.should_not have_a_dependency_between("Class[Base]", "Class[Top]")
     plan.graph.should_not have_a_dependency_between("Class[Top]", "Class[Base]")
   end
 
-  it "does not link a class included by another class in any way" do
+  it "ensures that a contained element occurs after anything the container requires and before anything that requires the container" do
+    pending("Need to implement contains()")
+
+    plan = execution_plan_for(<<-MANIFEST)
+      class apt_repo {
+          notify { 'apt_repo': }
+      }
+
+      class uses_ssh {
+          notify { "uses_ssh": }
+      }
+
+      class sshd {
+        contains ssh::common
+        notify { 'sshd': }
+      }
+
+      class ssh::common {
+        notify { 'ssh::common': }
+      }
+
+      include sshd
+      include uses_ssh
+      include apt_repo
+
+      Class[Apt_repo] -> Class[Sshd] -> Class[Uses_ssh]
+    MANIFEST
+
+    plan.order.should all_of(
+      execute_in_order("Notify[apt_repo]", "Notify[sshd]", "Notify[uses_ssh]"),
+      execute_in_order("Notify[apt_repo]", "Notify[sshd::common]", "Notify[uses_ssh]"))
+  end
+
+  it "ensures that an element contained by multiple containers happens after all dependencies of the containers" do
     pending("Need to implement contains()")
 
     plan = execution_plan_for(<<-MANIFEST)
@@ -111,37 +144,74 @@ describe "Evaluation order" do
           notify { 'first': }
       }
 
-      class last {
-          notify { "last": }
-      }
-
-      class container {
+      class module_top {
         contains contained
         notify { 'container': }
       }
 
-      class contained {
+      class module_diff_top {
+        contains contained
+        notify { 'other_container': }
+      }
+
+      class module_part {
         notify { 'contained': }
       }
 
       include first
       include container
-      include last
+      include diff_container
 
-      Class[First] -> Class[Container] -> Class[Last]
+      Class[First] -> Class[Container]
     MANIFEST
 
-    plan.order.should any_of(
-      plan_to_execute_in_order("Notify[first]", "Notify[container]", "Notify[contained]", "Notify[last]"),
-      plan_to_execute_in_order("Notify[first]", "Notify[contained]", "Notify[container]", "Notify[last]"))
+    plan.order.should all_of(
+      execute_in_order("Notify[first]", "Notify[module_part]"),
+      execute_in_order("Notify[first]", "Notify[module_top]"),
+      execute_in_order("Notify[first]", "Notify[module_diff_top]"))
   end
 
-  def plan_to_execute_in_order(*names)
+  it "ensures that an element contained by multiple containers happens before all dependents on the containers" do
+    pending("Need to implement contains()")
+
+    plan = execution_plan_for(<<-MANIFEST)
+      class last {
+        notify { 'last': }
+      }
+
+      class module_top {
+        contains contained
+        notify { 'container': }
+      }
+
+      class module_diff_top {
+        contains contained
+        notify { 'other_container': }
+      }
+
+      class module_part {
+        notify { 'contained': }
+      }
+
+      include first
+      include container
+      include diff_container
+
+      Class[Container] -> Class[Last]
+    MANIFEST
+
+    plan.order.should all_of(
+      execute_in_order("Notify[module_part]", "Notify[last]"),
+      execute_in_order("Notify[module_top]", "Notify[last]"),
+      execute_in_order("Notify[module_diff_top]", "Notify[last]"))
+  end
+
+  def execute_in_order(*names)
     resources = names.collect { |name| a_resource_named(name) }
     have_items_in_order(*resources)
   end
 
-  def plan_to_execute_in_any_order(*names)
+  def execute_in_any_order(*names)
     resources = names.collect { |name| a_resource_named(name) }
     have_items_in_any_order(*resources)
   end
