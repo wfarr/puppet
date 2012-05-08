@@ -382,6 +382,36 @@ describe "Evaluation order" do
       execute_in_any_order("Notify[ssh::client]", "Notify[ssh::service]"))
   end
 
+  it "contains a class inside a define that is associated with an event" do
+    pending("Need to implement contains()")
+
+    plan = execution_plan_for(<<-MANIFEST)
+      class apt::update {
+        notify { "apt::update": }
+      }
+
+      define apt::source {
+        contains apt::update
+        notify { "apt::source ($name)": notify => Class[apt::update] }
+      }
+
+      class after {
+        notify { "after": }
+      }
+
+      include after
+      apt::source { "first": }
+      apt::source { "second": }
+
+      Apt::Source[first] -> Class[after]
+    MANIFEST
+
+    plan.should all_of(
+      execute_in_order("Notify[apt::source (first)]", "Notify[apt::update]", "Notify[after]"),
+      execute_in_order("Notify[apt::source (second)]", "Notify[apt::update]"),
+      execute_in_any_order("Notify[apt::source (first)]", "Notify[apt::source (second)]"))
+  end
+
   def execute_in_order(*names)
     resources = names.collect { |name| a_resource_named(name) }
     have_attribute(:order, have_items_in_order(*resources))
