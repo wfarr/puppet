@@ -99,6 +99,7 @@ describe "Evaluation order" do
       include top
       include first
       include last
+
       Class[First] -> Class[Top] -> Class[Last]
     MANIFEST
 
@@ -157,7 +158,7 @@ describe "Evaluation order" do
 
       class ssh::keys {
         contains ssh::common
-        notify { 'ssh::client': }
+        notify { 'ssh::keys': }
       }
 
       class ssh::common {
@@ -192,7 +193,7 @@ describe "Evaluation order" do
 
       class ssh::keys {
         contains ssh::common
-        notify { 'ssh::client': }
+        notify { 'ssh::keys': }
       }
 
       class ssh::common {
@@ -210,6 +211,153 @@ describe "Evaluation order" do
       execute_in_order("Notify[ssh::server]", "Notify[uses_ssh]"),
       execute_in_order("Notify[ssh::common]", "Notify[uses_ssh]"),
       execute_in_any_order("Notify[uses_ssh]", "Notify[ssh::keys]"))
+  end
+
+  it "transitive with multiple containment" do
+    pending("Need to implement contains()")
+
+    plan = execution_plan_for(<<-MANIFEST)
+      class uses_ssh {
+        notify { 'uses_ssh': }
+      }
+
+      class provides_ssh_pkgs {
+        notify { 'provides_ssh_pkgs': }
+      }
+
+      class ssh::server {
+        contains ssh::common
+        notify { 'ssh::server': }
+      }
+
+      class ssh::keys {
+        contains ssh::common
+        notify { 'ssh::keys': }
+      }
+
+      class ssh::common {
+        notify { 'ssh::common': }
+      }
+
+      include uses_ssh
+      include ssh::server
+      include ssh::keys
+
+      Class[provides_ssh_pkgs] -> Class[ssh::server] -> Class[uses_ssh]
+    MANIFEST
+
+    plan.order.should all_of(
+      execute_in_order("Notify[provides_ssh_pkgs]", "Notify[ssh::server]", "Notify[uses_ssh]"),
+      execute_in_order("Notify[provides_ssh_pkgs]", "Notify[ssh::common]", "Notify[uses_ssh]"),
+      execute_in_any_order("Notify[ssh:keys]", "Notify[uses_ssh]", "Notify[provides_ssh_pkgs]"))
+  end
+
+  it "should be transitive with a class that only declares other classes and has no resources itself" do
+    pending("Need to implement contains()")
+
+    plan = execution_plan_for(<<-MANIFEST)
+      class uses_ssh {
+        notify { 'uses_ssh': }
+      }
+
+      class provides_ssh_pkgs {
+        notify { 'provides_ssh_pkgs': }
+      }
+
+      class ssh($client=true, $server=true) {
+        contains ssh::common
+        if $server {
+          contains ssh::server
+          Class[ssh::common] -> Class[ssh::server]
+        }
+        if $client {
+          contains ssh::client
+          Class[ssh::common] -> Class[ssh::client]
+        }
+        # (Note, there is no relationship between the client and server)
+      }
+
+      class ssh::server {
+        notify { 'ssh::server': }
+      }
+
+      class ssh::client {
+        notify { 'ssh::client': }
+      }
+
+      class ssh::common {
+        notify { 'ssh::common': }
+      }
+
+      class { 'provides_ssh_pkgs': }
+      -> class { 'ssh': }
+      -> class { 'uses_ssh': }
+    MANIFEST
+
+    plan.order.should all_of(
+      execute_in_order("Notify[provides_ssh_pkgs]", "Notify[ssh::common]", "Notify[ssh::server]", "Notify[uses_ssh]"),
+      execute_in_order("Notify[provides_ssh_pkgs]", "Notify[ssh::common]", "Notify[ssh::client]", "Notify[uses_ssh]"),
+      execute_in_any_order("Notify[ssh::client]", "Notify[ssh::server]"))
+  end
+
+  it "should be transitive with a class that only declares other classes and has no resources itself" do
+    pending("Need to implement contains()")
+
+    plan = execution_plan_for(<<-MANIFEST)
+      class uses_ssh {
+        notify { 'uses_ssh': }
+      }
+
+      class provides_ssh_pkgs {
+        notify { 'provides_ssh_pkgs': }
+      }
+
+      class ssh::common {
+        notify { 'ssh::common': }
+      }
+
+      class ssh::service {
+        notify { 'ssh::service': }
+      }
+
+      class ssh::server {
+        contains ssh::common
+        contains ssh::service
+        # NOTE: The anchor pattern breaks down here as well since the
+        # ssh::server class contains the common class yet we're setting up a
+        # requirement that the common class is managed before the server class.
+        Class[ssh::common] -> Class[ssh::server]
+        # We assume this (Class[ssh::server]) class will manage sshd_config
+        notify { 'ssh::server': }
+        # Notify the service to restart if configuration resources change.
+        Class[ssh::common] ~> Class[ssh::service]
+        # NOTE: The anchor pattern breaks down here because the ending anchor
+        # requires the contained class.  This sets up a before relationship
+        # which is mututally exclusive with this requirement.
+        Class[ssh::server] ~> Class[ssh::service]
+      }
+
+      class ssh::client {
+        contains ssh::common
+        notify { 'ssh::client': }
+      }
+
+      class ssh::all {
+        contains ssh::client
+        contains ssh::server
+      }
+
+      # Note the notify relationships, not the before releationships!
+      class { 'provides_ssh_pkgs': }
+      ~> class { 'ssh::all': }
+      ~> class { 'uses_ssh': }
+    MANIFEST
+
+    plan.order.should all_of(
+      execute_in_order("Notify[provides_ssh_pkgs]", "Notify[ssh::common]", "Notify[ssh::server]", "Notify[ssh::service]", "Notify[uses_ssh]"),
+      execute_in_order("Notify[provides_ssh_pkgs]", "Notify[ssh::common]", "Notify[ssh::client]", "Notify[uses_ssh]"),
+      execute_in_any_order("Notify[ssh::client]", "Notify[ssh::server]"),
+      execute_in_any_order("Notify[ssh::client]", "Notify[ssh::service]"))
   end
 
   def execute_in_order(*names)
