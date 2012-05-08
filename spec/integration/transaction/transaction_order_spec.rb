@@ -42,12 +42,34 @@ module PuppetSpec::Matchers::RAL
   end
 end
 
+module PuppetSpec::Matchers::Attributes
+  def have_attribute(name, matcher)
+    HaveAttributeMatcher.new(name, matcher)
+  end
+
+  class HaveAttributeMatcher
+    def initialize(name, matcher)
+      @name = name
+      @matcher = matcher
+    end
+
+    def matches?(actual)
+      @matcher.matches?(actual.send(@name))
+    end
+
+    def failure_message()
+      "the attribute #{@name}: #{@matcher.failure_message}"
+    end
+  end
+end
+
 describe "Evaluation order" do
   include PuppetSpec::Compiler
   include PuppetSpec::Matchers::RAL
   include PuppetSpec::Matchers::Enumerable
   include PuppetSpec::Matchers::AnyOf
   include PuppetSpec::Matchers::AllOf
+  include PuppetSpec::Matchers::Attributes
 
   it "ensures that a class required by another class is completed first" do
     #pending("The edge that forces the order seems to be missing")
@@ -69,12 +91,12 @@ describe "Evaluation order" do
       include top
     MANIFEST
 
-    plan.order.should execute_in_order("Notify[base]", "Notify[top]")
+    plan.should execute_in_order("Notify[base]", "Notify[top]")
     # Intuitively, the way we're expressing the expected edge for this test seems
     #  backwards as compared to the way the manifest reads.  We should discuss,
     #  and tweak the matcher implementation if we decide we'd rather express the
     #  edge source/target in the opposite order.
-    plan.graph.should have_a_dependency_between("Class[Base]", "Class[Intermediate]")
+    plan.should have_a_dependency_between("Class[Base]", "Class[Intermediate]")
   end
 
   it "does not link a class included by another class in any way" do
@@ -103,9 +125,9 @@ describe "Evaluation order" do
       Class[First] -> Class[Top] -> Class[Last]
     MANIFEST
 
-    plan.order.should execute_in_any_order("Notify[top]", "Notify[base]")
+    plan.should execute_in_any_order("Notify[top]", "Notify[base]")
 
-    plan.graph.should_not any_of(
+    plan.should_not any_of(
       have_a_dependency_between("Class[Base]", "Class[Top]"),
       have_a_dependency_between("Class[Top]", "Class[Base]"))
   end
@@ -138,7 +160,7 @@ describe "Evaluation order" do
       Class[Apt_repo] -> Class[Sshd] -> Class[Uses_ssh]
     MANIFEST
 
-    plan.order.should all_of(
+    plan.should all_of(
       execute_in_order("Notify[apt_repo]", "Notify[sshd]", "Notify[uses_ssh]"),
       execute_in_order("Notify[apt_repo]", "Notify[sshd::common]", "Notify[uses_ssh]"))
   end
@@ -172,7 +194,7 @@ describe "Evaluation order" do
       Class[apt_repo] -> Class[ssh::server]
     MANIFEST
 
-    plan.order.should all_of(
+    plan.should all_of(
       execute_in_order("Notify[apt_repo]", "Notify[ssh::server]"),
       execute_in_order("Notify[apt_repo]", "Notify[ssh::common]"),
       execute_in_any_order("Notify[apt_repo]", "Notify[ssh::keys]"))
@@ -207,7 +229,7 @@ describe "Evaluation order" do
       Class[ssh::server] -> Class[uses_ssh]
     MANIFEST
 
-    plan.order.should all_of(
+    plan.should all_of(
       execute_in_order("Notify[ssh::server]", "Notify[uses_ssh]"),
       execute_in_order("Notify[ssh::common]", "Notify[uses_ssh]"),
       execute_in_any_order("Notify[uses_ssh]", "Notify[ssh::keys]"))
@@ -246,7 +268,7 @@ describe "Evaluation order" do
       Class[provides_ssh_pkgs] -> Class[ssh::server] -> Class[uses_ssh]
     MANIFEST
 
-    plan.order.should all_of(
+    plan.should all_of(
       execute_in_order("Notify[provides_ssh_pkgs]", "Notify[ssh::server]", "Notify[uses_ssh]"),
       execute_in_order("Notify[provides_ssh_pkgs]", "Notify[ssh::common]", "Notify[uses_ssh]"),
       execute_in_any_order("Notify[ssh:keys]", "Notify[uses_ssh]", "Notify[provides_ssh_pkgs]"))
@@ -294,7 +316,7 @@ describe "Evaluation order" do
       -> class { 'uses_ssh': }
     MANIFEST
 
-    plan.order.should all_of(
+    plan.should all_of(
       execute_in_order("Notify[provides_ssh_pkgs]", "Notify[ssh::common]", "Notify[ssh::server]", "Notify[uses_ssh]"),
       execute_in_order("Notify[provides_ssh_pkgs]", "Notify[ssh::common]", "Notify[ssh::client]", "Notify[uses_ssh]"),
       execute_in_any_order("Notify[ssh::client]", "Notify[ssh::server]"))
@@ -353,7 +375,7 @@ describe "Evaluation order" do
       ~> class { 'uses_ssh': }
     MANIFEST
 
-    plan.order.should all_of(
+    plan.should all_of(
       execute_in_order("Notify[provides_ssh_pkgs]", "Notify[ssh::common]", "Notify[ssh::server]", "Notify[ssh::service]", "Notify[uses_ssh]"),
       execute_in_order("Notify[provides_ssh_pkgs]", "Notify[ssh::common]", "Notify[ssh::client]", "Notify[uses_ssh]"),
       execute_in_any_order("Notify[ssh::client]", "Notify[ssh::server]"),
@@ -362,16 +384,16 @@ describe "Evaluation order" do
 
   def execute_in_order(*names)
     resources = names.collect { |name| a_resource_named(name) }
-    have_items_in_order(*resources)
+    have_attribute(:order, have_items_in_order(*resources))
   end
 
   def execute_in_any_order(*names)
     resources = names.collect { |name| a_resource_named(name) }
-    have_items_in_any_order(*resources)
+    have_attribute(:order, have_items_in_any_order(*resources))
   end
 
   def have_a_dependency_between(from_name, to_name)
-    contain_edge_between(a_resource_named(from_name), a_resource_named(to_name))
+    have_attribute(:graph, contain_edge_between(a_resource_named(from_name), a_resource_named(to_name)))
   end
 
   class EvaluationRecorder
