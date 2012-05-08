@@ -50,7 +50,7 @@ describe "Evaluation order" do
   include PuppetSpec::Matchers::AllOf
 
   it "ensures that a class required by another class is completed first" do
-    pending("The edge that forces the order seems to be missing")
+    #pending("The edge that forces the order seems to be missing")
 
     plan = execution_plan_for(<<-MANIFEST)
       class base {
@@ -70,7 +70,11 @@ describe "Evaluation order" do
     MANIFEST
 
     plan.order.should execute_in_order("Notify[base]", "Notify[top]")
-    plan.graph.should have_a_dependency_between("Class[Intermediate]", "Class[Base]")
+    # Intuitively, the way we're expressing the expected edge for this test seems
+    #  backwards as compared to the way the manifest reads.  We should discuss,
+    #  and tweak the matcher implementation if we decide we'd rather express the
+    #  edge source/target in the opposite order.
+    plan.graph.should have_a_dependency_between("Class[Base]", "Class[Intermediate]")
   end
 
   it "does not link a class included by another class in any way" do
