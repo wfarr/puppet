@@ -14,7 +14,7 @@ module PuppetSpec::Matchers::AnyOf
     end
 
     def failure_message() 
-      "Exepected any of #{@matchers}, but was #{@actual}"
+      "Exepected any of [#{@matchers.join(', ')}], but was [#{@actual.join(', ')}]"
     end
   end
 end

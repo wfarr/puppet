@@ -47,6 +47,7 @@ describe "Evaluation order" do
   include PuppetSpec::Matchers::RAL
   include PuppetSpec::Matchers::Enumerable
   include PuppetSpec::Matchers::AnyOf
+  include PuppetSpec::Matchers::AllOf
 
   it "ensures that a class required by another class is completed first" do
     pending("The edge that forces the order seems to be missing")

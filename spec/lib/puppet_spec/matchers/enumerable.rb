@@ -29,6 +29,10 @@ module PuppetSpec::Matchers::Enumerable
     def failure_message()
       "Elements in 'expected' do not appear in order in 'actual'; expected '#{@expected}', actual '#{@actual}'"
     end
+
+    def to_s()
+      "in order [#{@expected.join(', ')}]"
+    end
   end
 
   class EnumerableItemsInAnyOrderMatcher
@@ -55,6 +59,10 @@ module PuppetSpec::Matchers::Enumerable
 
     def failure_message()
       "Elements in 'expected' do not appear in 'actual'; expected '#{@expected}', actual '#{@actual}'"
+    end
+
+    def to_s()
+      "in any order [#{@expected.join(', ')}]"
     end
   end
 end
