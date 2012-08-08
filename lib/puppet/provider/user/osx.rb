@@ -88,19 +88,31 @@ Puppet::Type.type(:user).provide :osx do
   end
 
   def exists?
-    if @property_hash[:ensure] == :present
-      true
-    else
-      false
+    # Check for existance of a user. The @users variable becomes and array
+    # of current users that's memoized from the get_list_of_users method.
+    @users ||= get_list_of_users
+    @users.include?(@resource.name) ? true : false
+  end
+
+  def get_list_of_users
+    # This method will return @users if it's already been calculated within
+    # this Puppet run.  If it hasn't, query dscl for a list of users and
+    # return an array of users on the system.
+    unless @users
+      @users = []
+      self.class.get_all_users.each do |user|
+        @users << user['dsAttrTypeStandard:RecordName'][0]
+      end
     end
+    @users
   end
 
   def create
-
+    puts 'Sudo create you a user, dammit'
   end
 
   def destroy
-
+    puts 'Sudo remove you a user, dammit'
   end
 
   def groups
