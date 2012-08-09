@@ -6,7 +6,6 @@ Puppet::Type.type(:user).provide :osx do
   desc "User management on OS X."
 
   commands :dscl => "/usr/bin/dscl"
-  commands :groups_cmd => '/usr/bin/groups'
   confine :operatingsystem => :darwin
   defaultfor :operatingsystem => :darwin
 
@@ -117,7 +116,19 @@ Puppet::Type.type(:user).provide :osx do
   def groups
     # The groups command in OS X will return group membership for a passed
     # user. Values need to be returned as a comma-separated string of groups.
-    groups_cmd(@resource.name).split.sort.join(',')
+    groups_array = []
+    get_list_of_groups.each do |group|
+      groups_array << group["dsAttrTypeStandard:RecordName"][0] if group["dsAttrTypeStandard:GroupMembership"] and group["dsAttrTypeStandard:GroupMembership"].include?(@resource.name)
+    end
+    groups_array.join(',')
+  end
+
+  def get_list_of_groups
+    Plist.parse_xml(dscl '-plist', '.', 'readall', '/Groups')
+  end
+
+  def groups=(value)
+    puts "I'm changing your groups values to #{value}"
   end
 
   def password
