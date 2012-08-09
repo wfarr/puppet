@@ -5,6 +5,10 @@ require 'pp'
 Puppet::Type.type(:user).provide :osx do
   desc "User management on OS X."
 
+##                   ##
+## Provider Settings ##
+##                   ##
+
   commands :dscl => "/usr/bin/dscl"
   confine :operatingsystem => :darwin
   defaultfor :operatingsystem => :darwin
@@ -29,6 +33,10 @@ Puppet::Type.type(:user).provide :osx do
   #verify :uid, "UID must be an integer" do |value|
   #  value.is_a? Integer
   #end
+
+##                  ##
+## Instance Methods ##
+##                  ##
 
   def self.ds_to_ns_attribute_map
     # This method exists to map the dscl values to the correct Puppet
@@ -94,6 +102,10 @@ Puppet::Type.type(:user).provide :osx do
     attribute_hash
   end
 
+##                   ##
+## Ensurable Methods ##
+##                   ##
+
   def exists?
     # Check for existance of a user. Use a dscl call to determine whether
     # the user exists. Rescue the DSCL error if the user doesn't exist
@@ -113,6 +125,10 @@ Puppet::Type.type(:user).provide :osx do
     puts 'Sudo remove you a user, dammit'
   end
 
+##                       ##
+## Getter/Setter Methods ##
+##                       ##
+
   def groups
     # Local groups report group membership via dscl, and so this method gets
     # an array of hashes that correspond to every local group's attributes,
@@ -126,10 +142,6 @@ Puppet::Type.type(:user).provide :osx do
       groups_array << group["dsAttrTypeStandard:RecordName"][0] if group["dsAttrTypeStandard:GroupMembership"] and group["dsAttrTypeStandard:GroupMembership"].include?(@resource.name)
     end
     groups_array.join(',')
-  end
-
-  def get_list_of_groups
-    Plist.parse_xml(dscl '-plist', '.', 'readall', '/Groups')
   end
 
   def groups=(value)
@@ -156,6 +168,16 @@ Puppet::Type.type(:user).provide :osx do
         # Do 10.8 Hackery Here
       end
     end
+  end
+
+  ##                ##
+  ## Helper Methods ##
+  ##                ##
+
+  def get_list_of_groups
+    # Use dscl to retrieve an array of hashes containing attributes about all
+    # of the local groups on the machine.
+    Plist.parse_xml(dscl '-plist', '.', 'readall', '/Groups')
   end
 
   def get_shadowhashdata
