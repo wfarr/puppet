@@ -153,7 +153,7 @@ Puppet::Type.type(:user).provide :osx do
     # The plist embedded in the ShadowHashData key is a binary plist. The
     # facter/util/plist library doesn't read binary plists, so we need to
     # extract the binary plist, convert it to XML, and return it.
-    embedded_binary_plist = Array(shadow_hash_data['dsAttrTypeNative:ShadowHashData'][0].gsub(' ', '')).pack('H*')
+    embedded_binary_plist = Array(shadow_hash_data['dsAttrTypeNative:ShadowHashData'][0].delete(' ')).pack('H*')
     convert_binary_to_xml(embedded_binary_plist)
   end
 
