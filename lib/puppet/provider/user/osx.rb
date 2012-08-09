@@ -114,8 +114,13 @@ Puppet::Type.type(:user).provide :osx do
   end
 
   def groups
-    # The groups command in OS X will return group membership for a passed
-    # user. Values need to be returned as a comma-separated string of groups.
+    # Local groups report group membership via dscl, and so this method gets
+    # an array of hashes that correspond to every local group's attributes,
+    # iterates through them, and populates an array with the list of groups
+    # for which the user is a member (based on username).
+    #
+    # Note that using this method misses nested group membership. It will only
+    # report explicit group membership.
     groups_array = []
     get_list_of_groups.each do |group|
       groups_array << group["dsAttrTypeStandard:RecordName"][0] if group["dsAttrTypeStandard:GroupMembership"] and group["dsAttrTypeStandard:GroupMembership"].include?(@resource.name)
