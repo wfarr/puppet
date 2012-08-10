@@ -140,8 +140,9 @@ Puppet::Type.type(:user).provide :osx do
     groups_array = []
     get_list_of_groups.each do |group|
       groups_array << group["dsAttrTypeStandard:RecordName"][0] if group["dsAttrTypeStandard:GroupMembership"] and group["dsAttrTypeStandard:GroupMembership"].include?(@resource.name)
+      groups_array << group["dsAttrTypeStandard:RecordName"][0] if group["dsAttrTypeStandard:GroupMembers"] and group["dsAttrTypeStandard:GroupMembers"].include?(@property_hash[:guid])
     end
-    groups_array.join(',')
+    groups_array.uniq.join(',')
   end
 
   def groups=(value)
