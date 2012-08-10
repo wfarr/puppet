@@ -167,8 +167,7 @@ Puppet::Type.type(:user).provide :osx do
     # a version greater than 10.2) and then calls the correct method to
     # retrieve the password hash
     if (Puppet::Util::Package.versioncmp(Facter.value(:macosx_productversion_major), '10.7') == -1)
-      # Calculate SHA1 Hash
-      'password'
+      get_sha1(@property_hash[:guid])
     else
       shadow_hash_data = get_shadowhashdata
       return '*' if shadow_hash_data.empty?
@@ -225,5 +224,19 @@ Puppet::Type.type(:user).provide :osx do
     # The salted-SHA512 password hash in 10.7 is stored in the 'SALTED-SHA512'
     # key as binary data. That data is extracted and converted to a hex string.
     embedded_binary_plist['SALTED-SHA512'].string.unpack("H*")[0]
+  end
+
+  def get_sha1(guid)
+    # In versions 10.5 and 10.6 of OS X, the password hash is stored in a file
+    # in the /var/db/shadow/hash directory that matches the GUID of the user.
+    password_hash = nil
+    password_hash_file = "/var/db/shadow/hash/#{guid}"
+    if File.exists?(password_hash_file) and File.file?(password_hash_file)
+      fail("Could not read password hash file at #{password_hash_file}") if not File.readable?(password_hash_file)
+      f = File.new(password_hash_file)
+      password_hash = f.read
+      f.close
+    end
+    password_hash
   end
 end
