@@ -146,7 +146,17 @@ Puppet::Type.type(:user).provide :osx do
   end
 
   def groups=(value)
-    puts "I'm changing your groups values to #{value}"
+    # In the setter method we're only going to take action on groups for which
+    # the user is not currently a member.
+    groups_to_add = @resource[:groups].split(',') - groups.split(',')
+    groups_to_add.each do |group|
+      begin
+        dscl '.', '-merge', "/Groups/#{group}", 'GroupMembership', @resource.name
+        dscl '.', '-merge', "/Groups/#{group}", 'GroupMembers', get_attribute_from_dscl('Users', 'GeneratedUID')["dsAttrTypeStandard:GeneratedUID"][0]
+      rescue
+        fail("OS X Provider: Unable to add #{@resource.name} to #{group}")
+      end
+    end
   end
 
   def password
