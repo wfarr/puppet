@@ -169,7 +169,7 @@ Puppet::Type.type(:user).provide :osx do
     if (Puppet::Util::Package.versioncmp(Facter.value(:macosx_productversion_major), '10.7') == -1)
       get_sha1(@property_hash[:guid])
     else
-      shadow_hash_data = get_shadowhashdata
+      shadow_hash_data = get_attribute_from_dscl('Users', 'ShadowHashData')
       return '*' if shadow_hash_data.empty?
       embedded_binary_plist = get_embedded_binary_plist(shadow_hash_data)
       if embedded_binary_plist['SALTED-SHA512']
@@ -190,11 +190,11 @@ Puppet::Type.type(:user).provide :osx do
     Plist.parse_xml(dscl '-plist', '.', 'readall', '/Groups')
   end
 
-  def get_shadowhashdata
-    # In versions of OS X greater than 10.6, every user with a password has a
-    # ShadowHashData key which contains an embedded binary plist. This method
-    # uses dscl to get that specific key.
-    Plist.parse_xml(dscl '-plist', '.', 'read', "/Users/#{@resource.name}", 'ShadowHashData')
+  def get_attribute_from_dscl(path, keyname)
+    # Perform a dscl lookup at the path specified for the specific keyname
+    # value. The value returned is the first item within the array returned
+    # from dscl
+    Plist.parse_xml(dscl '-plist', '.', 'read', "/#{path}/#{@resource.name}", keyname)
   end
 
   def get_embedded_binary_plist(shadow_hash_data)
