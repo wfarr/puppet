@@ -13,10 +13,10 @@ describe Puppet::Type.type(:user).provider(:osx) do
   let(:defaults) do
     {
       'UniqueID'         => '1000',
-      'RealName'         => resource.name,
+      'RealName'         => resource[:name],
       'PrimaryGroupID'   => '20',
       'UserShell'        => '/bin/bash',
-      'NFSHomeDirectory' => "/Users/#{resource.name}"
+      'NFSHomeDirectory' => "/Users/#{resource[:name]}"
     }
   end
 
@@ -84,10 +84,10 @@ describe Puppet::Type.type(:user).provider(:osx) do
 
   describe '#create with defaults' do
     before :each do
-      provider.expects(:dscl).with('.', '-create', "/Users/#{resource.name}").returns true
+      provider.expects(:dscl).with('.', '-create', "/Users/#{resource[:name]}").returns true
       provider.expects(:next_system_id).returns(defaults['UniqueID'])
       defaults.each do |key,val|
-        provider.expects(:dscl).with('.', '-merge', "/Users/#{resource.name}", key, val)
+        provider.expects(:dscl).with('.', '-merge', "/Users/#{resource[:name]}", key, val)
       end
     end
 
