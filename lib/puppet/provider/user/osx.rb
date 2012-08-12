@@ -14,6 +14,7 @@ Puppet::Type.type(:user).provide :osx do
 ## Provider Settings ##
 ##                   ##
 
+  commands :uuidgen => '/usr/bin/uuidgen'
   commands :dscl => "/usr/bin/dscl"
   confine :operatingsystem => :darwin
   defaultfor :operatingsystem => :darwin
@@ -60,6 +61,10 @@ Puppet::Type.type(:user).provide :osx do
       'ENetAddress'      => :en_address,
       'GroupMembership'  => :members,
     }
+  end
+
+  def self.ns_to_ds_attribute_map
+    @ns_to_ds_attribute_map ||= ds_to_ns_attribute_map.invert
   end
 
   def self.instances
@@ -123,11 +128,48 @@ Puppet::Type.type(:user).provide :osx do
   end
 
   def create
-    puts 'Sudo create you a user, dammit'
+    # This method is called if ensure => present is passed and the exists?
+    # method returns false. Dscl will directly set most values, but the
+    # setter methods will be used for any exceptions.
+    dscl '.', '-create',  "/Users/#{@resource.name}"
+    Puppet::Type.type(@resource.class.name).validproperties.each do |attribute|
+      next if attribute == :ensure
+      value = @resource.should(attribute)
+
+      # Value defaults
+      if value.nil?
+        value = '20' if attribute == :gid
+        value = next_system_id if attribute == :uid
+        value = @resource.name if attribute == :comment
+        value = '/bin/bash' if attribute == :shell
+        value = "/Users/#{@resource.name}" if attribute == :home
+      end
+
+      ## Set values ##
+      # For the :password and :groups properties, call the setter methods
+      # to enforce those values. For everything else, use dscl with the
+      # ns_to_ds_attribute_map to set the appropriate values.
+      if value != "" and not value.nil?
+        case attribute
+        when :password
+          send('password=', value)
+        when :groups
+          send('groups=', value)
+        else
+          begin
+            dscl '.', '-merge', "/Users/#{@resource.name}", self.class.ns_to_ds_attribute_map[attribute], value
+          rescue Puppet::ExecutionFailure => detail
+            fail("Could not create #{@resource.class.name} #{@resource.name}: #{detail}")
+          end
+        end
+      end
+    end
   end
 
-  def destroy
-    puts 'Sudo remove you a user, dammit'
+  def delete
+    # This method is called when ensure => absent has been set.
+    # Deleting a user is handled by dscl
+    dscl '.', '-delete', "/Users/#{@resource.name}"
   end
 
 ##                       ##
@@ -223,6 +265,16 @@ Puppet::Type.type(:user).provide :osx do
     Puppet.debug('Converting XML values to a hash.')
     @plist_hash = Plist::parse_xml(@converted_plist)
     @plist_hash
+  end
+
+  def next_system_id(min_id=20)
+    # Get the next available uid on the system by getting a list of user ids,
+    # sorting them, grabbing the last one, and adding a 1. Scientific stuff here.
+    dscl_output = dscl '.', '-list', '/Users', 'uid'
+    # We're ok with throwing away negative uids here. Also, remove nil values.
+    user_ids = dscl_output.split.compact.collect { |l| l.to_i if l.match(/^\d+$/) }
+    user_ids.compact!.sort! { |a,b| a.to_f <=> b.to_f }
+    user_ids.last + 1
   end
 
   def get_salted_sha512(embedded_binary_plist)
