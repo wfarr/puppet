@@ -2,6 +2,7 @@
 #1. Tests
 #2. Check individual getter/setter methods with Puppet manifests
 #3. Make sure gid doesn't show up in groups - even with changes
+#4. Fix create method to pass guid for 10.5/10.6 passwords
 
 require 'puppet'
 require 'facter/util/plist'
