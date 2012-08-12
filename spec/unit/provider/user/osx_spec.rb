@@ -131,7 +131,7 @@ describe Puppet::Type.type(:user).provider(:osx) do
   end
 
   describe 'self#generate_attribute_hash' do
-    it 'should return :uid values as an Integer' do
+    it 'should return :uid values as a Fixnum' do
       provider.class.generate_attribute_hash(user_plist_hash)[:uid].class.should == Fixnum
     end
 
