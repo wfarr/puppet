@@ -196,7 +196,7 @@ Puppet::Type.type(:user).provide :osx do
   def groups=(value)
     # In the setter method we're only going to take action on groups for which
     # the user is not currently a member.
-    groups_to_add = @resource[:groups].split(',') - groups.split(',')
+    groups_to_add = value.split(',') - groups.split(',')
     groups_to_add.each do |group|
       begin
         dscl '.', '-merge', "/Groups/#{group}", 'GroupMembership', @resource.name
