@@ -1,3 +1,8 @@
+## TODO LIST ##
+#1. Tests
+#2. Check individual getter/setter methods with Puppet manifests
+#3. Make sure gid doesn't show up in groups - even with changes
+
 require 'puppet'
 require 'facter/util/plist'
 require 'pp'
