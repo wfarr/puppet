@@ -15,6 +15,7 @@ Puppet::Type.type(:user).provide :osx do
 ##                   ##
 
   commands :uuidgen => '/usr/bin/uuidgen'
+  commands :dsimport => '/usr/bin/dsimport'
   commands :dscl => "/usr/bin/dscl"
   confine :operatingsystem => :darwin
   defaultfor :operatingsystem => :darwin
@@ -227,6 +228,19 @@ Puppet::Type.type(:user).provide :osx do
     end
   end
 
+  def password=(value)
+    # If you thought GETTING a password was bad, try SETTING it. This method
+    # makes me want to cry. A thousand tears.
+    binary_password_value = value.unpack('a2'*(value.size/2)).collect { |i| i.hex.chr }.join
+    archive_hash = Hash.new
+    archive_hash = { 'SALTED-SHA512' => StringIO.new }
+    archive_hash['SALTED-SHA512'].string = binary_password_value
+    binary_archive_hash = convert_xml_to_binary(archive_hash)
+    File.open('/tmp/notsecret', 'w') { |file| file.write(binary_archive_hash) }
+    File.open('/tmp/dsimportfile', 'w') { |file| file.write("0x0A 0x5C 0x3A 0x2C dsRecTypeStandard:Users 2 dsAttrTypeStandard:RecordName externalbinary:dsAttrTypeStandard:ShadowHashData \n#{@resource.name}:/tmp/notsecret") }
+    dsimport '/tmp/dsimportfile', '/Local/Default', 'O'
+  end
+
   ##                ##
   ## Helper Methods ##
   ##                ##
@@ -250,6 +264,19 @@ Puppet::Type.type(:user).provide :osx do
     # extract the binary plist, convert it to XML, and return it.
     embedded_binary_plist = Array(shadow_hash_data['dsAttrTypeNative:ShadowHashData'][0].delete(' ')).pack('H*')
     convert_binary_to_xml(embedded_binary_plist)
+  end
+
+  def convert_xml_to_binary(plist_data)
+    # This method will accept a hash that has been returned from Plist::parse_xml
+    # and convert it to a binary plist (string value).
+    Puppet.debug('Converting XML plist to binary')
+    Puppet.debug('Executing: \'plutil -convert binary1 -o - -\'')
+    IO.popen('plutil -convert binary1 -o - -', mode='r+') do |io|
+      io.write Plist::Emit.dump(plist_data)
+      io.close_write
+      @converted_plist = io.read
+    end
+    @converted_plist
   end
 
   def convert_binary_to_xml(plist_data)
