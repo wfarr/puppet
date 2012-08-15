@@ -7,6 +7,7 @@
 require 'puppet'
 require 'facter/util/plist'
 require 'pp'
+require 'base64'
 
 Puppet::Type.type(:user).provide :osx do
   desc "User management on OS X."
@@ -15,10 +16,14 @@ Puppet::Type.type(:user).provide :osx do
 ## Provider Settings ##
 ##                   ##
 
-  commands :uuidgen => '/usr/bin/uuidgen'
+  # Provider command declarations
+  commands :uuidgen  => '/usr/bin/uuidgen'
   commands :dsimport => '/usr/bin/dsimport'
-  commands :dscl => "/usr/bin/dscl"
-  confine :operatingsystem => :darwin
+  commands :dscl     => '/usr/bin/dscl'
+  commands :plutil   => '/usr/bin/plutil'
+
+  # Provider confines and defaults
+  confine    :operatingsystem => :darwin
   defaultfor :operatingsystem => :darwin
 
   # Need this to create getter/setter methods automagically
@@ -224,27 +229,48 @@ Puppet::Type.type(:user).provide :osx do
       if embedded_binary_plist['SALTED-SHA512']
         get_salted_sha512(embedded_binary_plist)
       else
-        # Do 10.8 Hackery Here
+        # TODO: Do 10.8 Hackery Here
       end
     end
   end
 
   def password=(value)
     # If you thought GETTING a password was bad, try SETTING it. This method
-    # makes me want to cry. A thousand tears.
-    binary_password_value = value.unpack('a2'*(value.size/2)).collect { |i| i.hex.chr }.join
-    archive_hash = Hash.new
-    archive_hash = { 'SALTED-SHA512' => StringIO.new }
-    archive_hash['SALTED-SHA512'].string = binary_password_value
-    binary_archive_hash = convert_xml_to_binary(archive_hash)
-    File.open('/tmp/notsecret', 'w') { |file| file.write(binary_archive_hash) }
-    File.open('/tmp/dsimportfile', 'w') { |file| file.write("0x0A 0x5C 0x3A 0x2C dsRecTypeStandard:Users 2 dsAttrTypeStandard:RecordName externalbinary:dsAttrTypeStandard:ShadowHashData \n#{@resource.name}:/tmp/notsecret") }
-    dsimport '/tmp/dsimportfile', '/Local/Default', 'O'
+    # makes me want to cry. A thousand tears...
+    #
+    # I've been unsuccessful in tracking down a way to set the password for
+    # a user using dscl that DOESN'T require passing it as plaintext. We were
+    # also unable to get dsimport to work like this. Due to these downfalls,
+    # the sanest method requires opening the user's plist, dropping in the
+    # password hash, and serializing it back to disk. The problems with THIS
+    # method revolve around dscl. Any time you directly modify a user's plist,
+    # you need to flush the cache that dscl maintains.
+    if (Puppet::Util::Package.versioncmp(Facter.value(:macosx_productversion_major), '10.7') == -1)
+      # TODO: 10.5 and 10.6 behavior
+    else
+      write_password_to_users_plist(value)
+    end
+
+    #binary_password_value = value.unpack('a2'*(value.size/2)).collect { |i| i.hex.chr }.join
+    #archive_hash = Hash.new
+    #archive_hash = { 'SALTED-SHA512' => StringIO.new }
+    #archive_hash['SALTED-SHA512'].string = binary_password_value
+    #binary_archive_hash = convert_xml_to_binary(archive_hash)
+    #tmpdir = Dir.mktmpdir
+    #password_file = File.join(tmpdir, 'binary_password')
+    #cached_source = File.join(tmpdir, 'dsimportfile')
+    #File.open(password_file, 'w') { |file| file.write(binary_archive_hash) }
+    #File.open(cached_source, 'w') { |file| file.write("0x0A 0x5C 0x3A 0x2C dsRecTypeStandard:Users 2 dsAttrTypeStandard:RecordName externalbinary:dsAttrTypeStandard:ShadowHashData \n#{@resource.name}:/tmp/notsecret") }
+    #dsimport cached_source, '/Local/Default', 'O'
   end
 
   ##                ##
   ## Helper Methods ##
   ##                ##
+
+  def users_plist_dir
+    '/var/db/dslocal/nodes/Default/users'
+  end
 
   def get_list_of_groups
     # Use dscl to retrieve an array of hashes containing attributes about all
@@ -323,5 +349,58 @@ Puppet::Type.type(:user).provide :osx do
       f.close
     end
     password_hash
+  end
+
+  def write_password_to_users_plist(value)
+    # This method is only called on version 10.7 or greater. On 10.7 machines,
+    # passwords are set using a salted-SHA512 hash, and on 10.8 machines,
+    # passwords are set using PBKDF2. It's possible to have users on 10.8
+    # who have upgraded from 10.7 and thus have a salted-SHA512 password hash.
+    # If we encounter this, do what 10.8 does - remove that key and give them
+    # a 10.8-style PBKDF2 password.
+    users_plist = Plist::parse_xml(plutil '-convert', 'xml1', '-o', '/dev/stdout', "#{users_plist_dir}/#{@resource.name}.plist")
+    shadow_hash_data = get_shadow_hash_data(users_plist)
+    if Facter.value(:macosx_productversion_major) == '10.7'
+      set_salted_sha512(users_plist, shadow_hash_data, value)
+    else
+      if shadow_hash_data['SALTED-SHA512']
+        shadow_hash_data.delete('SALTED-SHA512')
+        # TODO: 10.8 Hackery Here
+        # set_salted_pbkdf2(users_plist, shadow_hash_data, value)
+      end
+    end
+  end
+
+  def get_shadow_hash_data(users_plist)
+    # This method will return the binary plist that's embedded in the
+    # ShadowHashData key of a user's plist, or false if it doesn't exist.
+    if users_plist['ShadowHashData']
+      password_hash_plist  = users_plist['ShadowHashData'][0].string
+      convert_binary_to_xml(password_hash_plist)
+    else
+      false
+    end
+  end
+
+  def set_salted_sha512(users_plist, shadow_hash_data, value)
+    # Puppet requires a salted-sha512 password hash for 10.7 users to be passed
+    # in Hex, but the embedded plist stores that value as a Base64 encoded
+    # string. This method converts the string and calls the
+    # write_users_plist_to_disk method to serialize and write the plist to disk.
+    shadow_hash_data = Hash.new unless shadow_hash_data
+    shadow_hash_data['SALTED-SHA512'].string = Base64.decode64([[value].pack("H*")].pack("m").strip)
+    binary_plist = convert_xml_to_binary(shadow_hash_data)
+    users_plist['ShadowHashData'][0].string = binary_plist
+    write_users_plist_to_disk(users_plist)
+  end
+
+  def write_users_plist_to_disk(users_plist)
+    # This method will accept a plist in XML format, save it to disk, convert
+    # the plist to a binary format, and flush the dscl cache.
+    Plist::Emit.save_plist(users_plist, "#{users_plist_dir}/#{@resource.name}.plist")
+    plutil '-convert' 'binary1' "#{users_plist_dir}/#{@resource.name}.plist"
+    # Restart directoryservices or opendirectoryd
+    # OR dscacheutil -cachedump
+    # OR sleep 5
   end
 end
