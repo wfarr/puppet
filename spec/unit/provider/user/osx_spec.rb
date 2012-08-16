@@ -163,6 +163,29 @@ describe Puppet::Type.type(:user).provider(:osx) do
     </plist>'
   end
 
+  let(:shadow_hash_data_plist) do
+    '<?xml version="1.0" encoding="UTF-8"?>
+     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+     <plist version="1.0">
+     <dict>
+       <key>dsAttrTypeNative:ShadowHashData</key>
+       <array>
+         <string>62706c69 73743030 d101025d 53414c54 45442d53 48413531 324f1044 7ea7d592 131f57b2 c8f8bdbc ec8d9df1 2128a386 393a4f00 c7619bac 2622a44d 451419d1 1da512d5 915ab98e 39718ac9 4083fe2e fd6bf710 a54d477f 8ff735b1 2587192d 080b1900 00000000 00010100 00000000 00000300 00000000 00000000 00000000 000060</string>
+       </array>
+     </dict>
+     </plist>'
+  end
+
+  let(:shadow_hash_data_hash) do
+    {
+      'dsAttrTypeNative:ShadowHashData' => ['62706c69 73743030 d101025d 53414c54 45442d53 48413531 324f1044 7ea7d592 131f57b2 c8f8bdbc ec8d9df1 2128a386 393a4f00 c7619bac 2622a44d 451419d1 1da512d5 915ab98e 39718ac9 4083fe2e fd6bf710 a54d477f 8ff735b1 2587192d 080b1900 00000000 00010100 00000000 00000300 00000000 00000000 00000000 000060']
+    }
+  end
+
+  let(:salted_sha512_password_hash) do
+    '7ea7d592131f57b2c8f8bdbcec8d9df12128a386393a4f00c7619bac2622a44d451419d11da512d5915ab98e39718ac94083fe2efd6bf710a54d477f8ff735b12587192d'
+  end
+
   let(:provider) { resource.provider }
 
   describe '#create with defaults' do
@@ -260,6 +283,17 @@ describe Puppet::Type.type(:user).provider(:osx) do
       provider.groups.should == 'testgroup,third'
     end
   end
+
+  describe '#groups=' do
+    it 'should call dscl to add necessary groups' do
+      provider.expects(:groups).returns('two,three')
+      provider.expects(:get_attribute_from_dscl).with('Users', 'GeneratedUID').returns({'dsAttrTypeStandard:GeneratedUID' => ['guidnonexistant_user']})
+      provider.expects(:dscl).with('.', '-merge', '/Groups/one', 'GroupMembership', 'nonexistant_user')
+      provider.expects(:dscl).with('.', '-merge', '/Groups/one', 'GroupMembers', 'guidnonexistant_user')
+      provider.groups= 'one,two,three'
+    end
+  end
+
   describe '#password' do
     ['10.5', '10.6'].each do |os_ver|
       it "should call the get_sha1 method on #{os_ver}" do
@@ -277,5 +311,17 @@ describe Puppet::Type.type(:user).provider(:osx) do
     end
 
     it 'should handle returning the password on 10.8'
+  end
+
+  describe '#password=' do
+    ['10.7', '10.8'].each do |os_ver|
+      it "should call write_password_to_users_plist on version #{os_ver}" do
+        Facter.expects(:value).with(:macosx_productversion_major).returns('10.7')
+        provider.expects(:write_password_to_users_plist).with('password')
+        provider.password = 'password'
+      end
+    end
+
+    it 'should handle password= on 10.5 and 10.6'
   end
 end
