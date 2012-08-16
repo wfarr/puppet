@@ -114,7 +114,7 @@ describe Puppet::Type.type(:user).provider(:osx) do
     [{
       'dsAttrTypeStandard:RecordName'      => ['testgroup'],
       'dsAttrTypeStandard:GroupMembership' => [
-                                                'nonexistant_user',
+                                                'testuser',
                                                 'jeff',
                                                 'zack'
                                               ],
@@ -141,7 +141,7 @@ describe Puppet::Type.type(:user).provider(:osx) do
     {
       'dsAttrTypeStandard:RecordName'      => ['third'],
       'dsAttrTypeStandard:GroupMembership' => [
-                                                'nonexistant_user',
+                                                'testuser',
                                                 'jeff',
                                                 'zack'
                                               ],
