@@ -223,7 +223,8 @@ Puppet::Type.type(:user).provide :osx do
     # a version greater than 10.2) and then calls the correct method to
     # retrieve the password hash
     if (Puppet::Util::Package.versioncmp(Facter.value(:macosx_productversion_major), '10.7') == -1)
-      get_sha1(@property_hash[:guid])
+      user_guid = get_attribute_from_dscl('Users', 'GeneratedUID')['dsAttrTypeStandard:GeneratedUID'][0]
+      get_sha1(user_guid)
     else
       shadow_hash_data = get_attribute_from_dscl('Users', 'ShadowHashData')
       return '*' if shadow_hash_data.empty?

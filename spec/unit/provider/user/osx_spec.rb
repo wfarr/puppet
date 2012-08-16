@@ -260,4 +260,22 @@ describe Puppet::Type.type(:user).provider(:osx) do
       provider.groups.should == 'testgroup,third'
     end
   end
+  describe '#password' do
+    ['10.5', '10.6'].each do |os_ver|
+      it "should call the get_sha1 method on #{os_ver}" do
+        Facter.expects(:value).with(:macosx_productversion_major).returns(os_ver)
+        provider.expects(:get_attribute_from_dscl).with('Users', 'GeneratedUID').returns({'dsAttrTypeStandard:GeneratedUID' => ['guidnonexistant_user']})
+        provider.expects(:get_sha1).with('guidnonexistant_user').returns('password')
+        provider.password.should == 'password'
+      end
+    end
+
+    it 'should call the get_salted_sha512 method on 10.7 and return the correct hash' do
+      Facter.expects(:value).with(:macosx_productversion_major).returns('10.7')
+      provider.expects(:get_attribute_from_dscl).with('Users', 'ShadowHashData').returns(shadow_hash_data_hash)
+      provider.password.should == salted_sha512_password_hash
+    end
+
+    it 'should handle returning the password on 10.8'
+  end
 end
