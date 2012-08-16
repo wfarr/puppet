@@ -71,6 +71,89 @@ describe Puppet::Type.type(:user).provider(:osx) do
     }
   end
 
+  let(:group_plist_hash) do
+    [{
+      'dsAttrTypeStandard:RecordName'      => ['testgroup'],
+      'dsAttrTypeStandard:GroupMembership' => [
+                                                'testuser',
+                                                'nonexistant_user',
+                                                'jeff',
+                                                'zack'
+                                              ],
+      'dsAttrTypeStandard:GroupMembers'    => [
+                                                'guidtestuser',
+                                                'guidjeff',
+                                                'guidzack'
+                                              ],
+    },
+    {
+      'dsAttrTypeStandard:RecordName'      => ['second'],
+      'dsAttrTypeStandard:GroupMembership' => [
+                                                'nonexistant_user',
+                                                'jeff',
+                                              ],
+      'dsAttrTypeStandard:GroupMembers'    => [
+                                                'guidtestuser',
+                                                'guidjeff',
+                                              ],
+    },
+    {
+      'dsAttrTypeStandard:RecordName'      => ['third'],
+      'dsAttrTypeStandard:GroupMembership' => [
+                                                'jeff',
+                                                'zack'
+                                              ],
+      'dsAttrTypeStandard:GroupMembers'    => [
+                                                'guidjeff',
+                                                'guidzack'
+                                              ],
+    }]
+  end
+
+  let(:group_plist_hash_guid) do
+    [{
+      'dsAttrTypeStandard:RecordName'      => ['testgroup'],
+      'dsAttrTypeStandard:GroupMembership' => [
+                                                'nonexistant_user',
+                                                'jeff',
+                                                'zack'
+                                              ],
+      'dsAttrTypeStandard:GroupMembers'    => [
+                                                'guidnonexistant_user',
+                                                'guidtestuser',
+                                                'guidjeff',
+                                                'guidzack'
+                                              ],
+    },
+    {
+      'dsAttrTypeStandard:RecordName'      => ['second'],
+      'dsAttrTypeStandard:GroupMembership' => [
+                                                'testuser',
+                                                'jeff',
+                                                'zack'
+                                              ],
+      'dsAttrTypeStandard:GroupMembers'    => [
+                                                'guidtestuser',
+                                                'guidjeff',
+                                                'guidzack'
+                                              ],
+    },
+    {
+      'dsAttrTypeStandard:RecordName'      => ['third'],
+      'dsAttrTypeStandard:GroupMembership' => [
+                                                'nonexistant_user',
+                                                'jeff',
+                                                'zack'
+                                              ],
+      'dsAttrTypeStandard:GroupMembers'    => [
+                                                'guidnonexistant_user',
+                                                'guidtestuser',
+                                                'guidjeff',
+                                                'guidzack'
+                                              ],
+    }]
+  end
+
   let(:empty_plist) do
     '<?xml version="1.0" encoding="UTF-8"?>
     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -165,6 +248,16 @@ describe Puppet::Type.type(:user).provider(:osx) do
   end
 
   describe '#groups' do
-    it 'should return a list of groups'
+    it "should return a list of groups if the user's name matches GroupMembership" do
+      provider.expects(:get_list_of_groups).returns(group_plist_hash)
+      provider.expects(:get_attribute_from_dscl).with('Users', 'GeneratedUID').returns(['guidnonexistant_user'])
+      provider.groups.should == 'second,testgroup'
+    end
+
+    it "should return a list of groups if the user's GUID matches GroupMembers" do
+      provider.expects(:get_list_of_groups).returns(group_plist_hash_guid)
+      provider.expects(:get_attribute_from_dscl).with('Users', 'GeneratedUID').returns(['guidnonexistant_user'])
+      provider.groups.should == 'testgroup,third'
+    end
   end
 end

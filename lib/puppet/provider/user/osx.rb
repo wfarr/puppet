@@ -192,11 +192,13 @@ Puppet::Type.type(:user).provide :osx do
     # Note that using this method misses nested group membership. It will only
     # report explicit group membership.
     groups_array = []
+    users_guid = get_attribute_from_dscl('Users', 'GeneratedUID')[0]
+
     get_list_of_groups.each do |group|
       groups_array << group["dsAttrTypeStandard:RecordName"][0] if group["dsAttrTypeStandard:GroupMembership"] and group["dsAttrTypeStandard:GroupMembership"].include?(@resource.name)
-      groups_array << group["dsAttrTypeStandard:RecordName"][0] if group["dsAttrTypeStandard:GroupMembers"] and group["dsAttrTypeStandard:GroupMembers"].include?(@property_hash[:guid])
+      groups_array << group["dsAttrTypeStandard:RecordName"][0] if group["dsAttrTypeStandard:GroupMembers"] and group["dsAttrTypeStandard:GroupMembers"].include?(users_guid)
     end
-    groups_array.uniq.join(',')
+    groups_array.uniq.sort.join(',')
   end
 
   def groups=(value)
