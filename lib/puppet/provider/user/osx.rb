@@ -253,18 +253,6 @@ Puppet::Type.type(:user).provide :osx do
     else
       write_password_to_users_plist(value)
     end
-
-    #binary_password_value = value.unpack('a2'*(value.size/2)).collect { |i| i.hex.chr }.join
-    #archive_hash = Hash.new
-    #archive_hash = { 'SALTED-SHA512' => StringIO.new }
-    #archive_hash['SALTED-SHA512'].string = binary_password_value
-    #binary_archive_hash = convert_xml_to_binary(archive_hash)
-    #tmpdir = Dir.mktmpdir
-    #password_file = File.join(tmpdir, 'binary_password')
-    #cached_source = File.join(tmpdir, 'dsimportfile')
-    #File.open(password_file, 'w') { |file| file.write(binary_archive_hash) }
-    #File.open(cached_source, 'w') { |file| file.write("0x0A 0x5C 0x3A 0x2C dsRecTypeStandard:Users 2 dsAttrTypeStandard:RecordName externalbinary:dsAttrTypeStandard:ShadowHashData \n#{@resource.name}:/tmp/notsecret") }
-    #dsimport cached_source, '/Local/Default', 'O'
   end
 
   ##                ##
