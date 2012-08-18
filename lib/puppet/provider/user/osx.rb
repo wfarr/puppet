@@ -322,8 +322,12 @@ Puppet::Type.type(:user).provide :osx do
     dscl_output = dscl '.', '-list', '/Users', 'uid'
     # We're ok with throwing away negative uids here. Also, remove nil values.
     user_ids = dscl_output.split.compact.collect { |l| l.to_i if l.match(/^\d+$/) }
-    user_ids.compact!.sort! { |a,b| a.to_f <=> b.to_f }
-    user_ids.last + 1
+    ids = user_ids.compact!.sort! { |a,b| a.to_f <=> b.to_f }
+    # We're just looking for an unused id in our sorted array.
+    ids.each_index do |i|
+      next_id = ids[i] + 1
+      return next_id if ids[i+1] != next_id and next_id >= min_id
+    end
   end
 
   def get_salted_sha512(embedded_binary_plist)
