@@ -232,7 +232,7 @@ Puppet::Type.type(:user).provide :osx do
       if embedded_binary_plist['SALTED-SHA512']
         get_salted_sha512(embedded_binary_plist)
       else
-        # TODO: Do 10.8 Hackery Here
+        get_salted_sha512_pbkdf2('entropy', embedded_binary_plist)
       end
     end
   end
@@ -344,6 +344,23 @@ Puppet::Type.type(:user).provide :osx do
     embedded_binary_plist['SALTED-SHA512'].string.unpack("H*")[0]
   end
 
+  def get_salted_sha512_pbkdf2(field, embedded_binary_plist)
+    # This method reads the passed embedded_binary_plist hash and returns values
+    # according to which field is passed.  Arguments passed are the hash
+    # containing the value read from the 'ShadowHashData' key in the User's
+    # plist, and the field to be read (one of 'entropy', 'salt', or 'iterations')
+    case field
+    when 'salt', 'entropy'
+      embedded_binary_plist['SALTED-SHA512-PBKDF2'][field].string.unpack('H*').first
+    when 'iterations'
+      Integer(embedded_binary_plist['SALTED-SHA512-PBKDF2'][field])
+    else
+      fail('Puppet has tried to read an incorrect value from the ' +
+           "SALTED-SHA512-PBKDF2 hash. Acceptable fields are 'salt', " +
+           "'entropy', or 'iterations'.")
+    end
+  end
+
   def get_sha1(guid)
     # In versions 10.5 and 10.6 of OS X, the password hash is stored in a file
     # in the /var/db/shadow/hash directory that matches the GUID of the user.
@@ -359,22 +376,19 @@ Puppet::Type.type(:user).provide :osx do
   end
 
   def write_password_to_users_plist(value)
-    # This method is only called on version 10.7 or greater. On 10.7 machines,
-    # passwords are set using a salted-SHA512 hash, and on 10.8 machines,
-    # passwords are set using PBKDF2. It's possible to have users on 10.8
-    # who have upgraded from 10.7 and thus have a salted-SHA512 password hash.
-    # If we encounter this, do what 10.8 does - remove that key and give them
-    # a 10.8-style PBKDF2 password.
+  #  # This method is only called on version 10.7 or greater. On 10.7 machines,
+  #  # passwords are set using a salted-SHA512 hash, and on 10.8 machines,
+  #  # passwords are set using PBKDF2. It's possible to have users on 10.8
+  #  # who have upgraded from 10.7 and thus have a salted-SHA512 password hash.
+  #  # If we encounter this, do what 10.8 does - remove that key and give them
+  #  # a 10.8-style PBKDF2 password.
     users_plist = Plist::parse_xml(plutil '-convert', 'xml1', '-o', '/dev/stdout', "#{users_plist_dir}/#{@resource.name}.plist")
     shadow_hash_data = get_shadow_hash_data(users_plist)
     if Facter.value(:macosx_productversion_major) == '10.7'
       set_salted_sha512(users_plist, shadow_hash_data, value)
     else
-      if shadow_hash_data['SALTED-SHA512']
-        shadow_hash_data.delete('SALTED-SHA512')
-        # TODO: 10.8 Hackery Here
-        # set_salted_pbkdf2(users_plist, shadow_hash_data, value)
-      end
+      shadow_hash_data.delete('SALTED-SHA512') if shadow_hash_data['SALTED-SHA512']
+      set_salted_pbkdf2(users_plist, shadow_hash_data, value)
     end
   end
 
@@ -396,6 +410,38 @@ Puppet::Type.type(:user).provide :osx do
     # write_users_plist_to_disk method to serialize and write the plist to disk.
     shadow_hash_data = Hash.new unless shadow_hash_data
     shadow_hash_data['SALTED-SHA512'].string = Base64.decode64([[value].pack("H*")].pack("m").strip)
+    binary_plist = convert_xml_to_binary(shadow_hash_data)
+    users_plist['ShadowHashData'][0].string = binary_plist
+    write_users_plist_to_disk(users_plist)
+  end
+
+  def set_salted_pbkdf2(users_plist, shadow_hash_data, field, value)
+    # This method accepts a passed value and one of three fields: 'salt',
+    # 'entropy', or 'iterations'.  These fields correspond with the fields
+    # utilized in a PBKDF2 password hashing system
+    # (see http://en.wikipedia.org/wiki/PBKDF2 ) where 'entropy' is the
+    # password hash, 'salt' is the password hash salt value, and 'iterations'
+    # is an integer recommended to be > 10,000. The remaining arguments are
+    # the user's plist itself, and the shadow_hash_data hash containing the
+    # existing PBKDF2 values.
+    shadow_hash_data = Hash.new unless shadow_hash_data
+    shadow_hash_data['SALTED-SHA512-PBKDF2'] = Hash.new unless shadow_hash_data['SALTED-SHA512-PBKDF2']
+    case field
+    when 'salt', 'entropy'
+      shadow_hash_data['SALTED-SHA512-PBKDF2'][field] =  StringIO.new unless converted_hash_plist['SALTED-SHA512-PBKDF2'][field]
+      shadow_hash_data['SALTED-SHA512-PBKDF2'][field].string = Base64.decode64([[value].pack("H*")].pack("m").strip)
+    when 'iterations'
+      shadow_hash_data['SALTED-SHA512-PBKDF2'][field] = Integer(value)
+    else
+      fail("Puppet has tried to set an incorrect field for the 'SALTED-SHA512-PBKDF2' hash. Acceptable fields are 'salt', 'entropy', or 'iterations'.")
+    end
+
+    # on 10.8, this field *must* contain 8 stars, or authentication will
+    # fail.
+    users_plist['passwd'] = ('*' * 8)
+
+    # Convert shadow_hash_data to a binary plist, write that value to the
+    # users_plist hash, and write the users_plist back to disk.
     binary_plist = convert_xml_to_binary(shadow_hash_data)
     users_plist['ShadowHashData'][0].string = binary_plist
     write_users_plist_to_disk(users_plist)
