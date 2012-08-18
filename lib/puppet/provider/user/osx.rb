@@ -321,8 +321,7 @@ Puppet::Type.type(:user).provide :osx do
       @converted_plist = io.read
     end
     Puppet.debug('Converting XML values to a hash.')
-    @plist_hash = Plist::parse_xml(@converted_plist)
-    @plist_hash
+    Plist::parse_xml(@converted_plist)
   end
 
   def next_system_id(min_id=20)
