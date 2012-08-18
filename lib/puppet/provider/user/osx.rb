@@ -249,7 +249,7 @@ Puppet::Type.type(:user).provide :osx do
     # method revolve around dscl. Any time you directly modify a user's plist,
     # you need to flush the cache that dscl maintains.
     if (Puppet::Util::Package.versioncmp(Facter.value(:macosx_productversion_major), '10.7') == -1)
-      # TODO: 10.5 and 10.6 behavior
+      write_sha1_hash(value)
     else
       write_password_to_users_plist(value)
     end
@@ -261,6 +261,10 @@ Puppet::Type.type(:user).provide :osx do
 
   def users_plist_dir
     '/var/db/dslocal/nodes/Default/users'
+  end
+
+  def password_hash_dir
+    '/var/db/shadow/hash'
   end
 
   def get_list_of_groups
@@ -332,7 +336,7 @@ Puppet::Type.type(:user).provide :osx do
     # In versions 10.5 and 10.6 of OS X, the password hash is stored in a file
     # in the /var/db/shadow/hash directory that matches the GUID of the user.
     password_hash = nil
-    password_hash_file = "/var/db/shadow/hash/#{guid}"
+    password_hash_file = "#{password_hash_dir}/#{guid}"
     if File.exists?(password_hash_file) and File.file?(password_hash_file)
       fail("Could not read password hash file at #{password_hash_file}") if not File.readable?(password_hash_file)
       f = File.new(password_hash_file)
@@ -393,5 +397,35 @@ Puppet::Type.type(:user).provide :osx do
     # Restart directoryservices or opendirectoryd
     # OR dscacheutil -cachedump
     # OR sleep 5
+  end
+
+  def write_sha1_hash(value)
+    users_guid = get_attribute_from_dscl('Users', 'GeneratedUID')[0]
+    password_hash_file = "#{password_hash_dir}/#{users_guid}"
+    begin
+      File.open(password_hash_file, 'w') { |f| f.write(value)}
+    rescue Errno::EACCES => detail
+      fail("Could not write to password hash file: #{detail}")
+    end
+
+    # NBK: For shadow hashes, the user AuthenticationAuthority must contain a value of
+    # ";ShadowHash;". The LKDC in 10.5 makes this more interesting though as it
+    # will dynamically generate ;Kerberosv5;;username@LKDC:SHA1 attributes if
+    # missing. Thus we make sure we only set ;ShadowHash; if it is missing, and
+    # we can do this with the merge command. This allows people to continue to
+    # use other custom AuthenticationAuthority attributes without stomping on them.
+    #
+    # There is a potential problem here in that we're only doing this when setting
+    # the password, and the attribute could get modified at other times while the
+    # hash doesn't change and so this doesn't get called at all... but
+    # without switching all the other attributes to merge instead of create I can't
+    # see a simple enough solution for this that doesn't modify the user record
+    # every single time. This should be a rather rare edge case. (famous last words)
+
+    begin
+      dscl '.', '-merge',  "/Users/#{@resource.name}", 'AuthenticationAuthority', ';ShadowHash;'
+    rescue Puppet::ExecutionFailure
+      fail('Could not set AuthenticationAuthority to ;ShadowHash;')
+    end
   end
 end
