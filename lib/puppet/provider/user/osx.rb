@@ -251,6 +251,15 @@ Puppet::Type.type(:user).provide :osx do
     if (Puppet::Util::Package.versioncmp(Facter.value(:macosx_productversion_major), '10.7') == -1)
       write_sha1_hash(value)
     else
+      if Facter.value(:macosx_productversion_major) == '10.7'
+        if value.length != 136
+          fail("OS X 10.7 requires a Salted SHA512 hash password of 136 characters.  Please check your password and try again.")
+        end
+      else
+        if value.length != 256
+           fail("OS X versions > 10.7 require a Salted SHA512 PBKDF2 password hash of 256 characters. Please check your password and try again.")
+        end
+      end
       write_password_to_users_plist(value)
     end
   end
