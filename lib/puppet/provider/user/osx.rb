@@ -428,7 +428,7 @@ Puppet::Type.type(:user).provide :osx do
     shadow_hash_data['SALTED-SHA512-PBKDF2'] = Hash.new unless shadow_hash_data['SALTED-SHA512-PBKDF2']
     case field
     when 'salt', 'entropy'
-      shadow_hash_data['SALTED-SHA512-PBKDF2'][field] =  StringIO.new unless converted_hash_plist['SALTED-SHA512-PBKDF2'][field]
+      shadow_hash_data['SALTED-SHA512-PBKDF2'][field] =  StringIO.new unless shadow_hash_data['SALTED-SHA512-PBKDF2'][field]
       shadow_hash_data['SALTED-SHA512-PBKDF2'][field].string = Base64.decode64([[value].pack("H*")].pack("m").strip)
     when 'iterations'
       shadow_hash_data['SALTED-SHA512-PBKDF2'][field] = Integer(value)
