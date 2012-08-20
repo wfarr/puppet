@@ -451,7 +451,7 @@ Puppet::Type.type(:user).provide :osx do
     # This method will accept a plist in XML format, save it to disk, convert
     # the plist to a binary format, and flush the dscl cache.
     Plist::Emit.save_plist(users_plist, "#{users_plist_dir}/#{@resource.name}.plist")
-    plutil '-convert' 'binary1' "#{users_plist_dir}/#{@resource.name}.plist"
+    plutil'-convert', 'binary1', "#{users_plist_dir}/#{@resource.name}.plist"
     # Restart directoryservices or opendirectoryd
     # OR dscacheutil -cachedump
     # OR sleep 5
