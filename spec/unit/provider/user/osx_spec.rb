@@ -10,6 +10,8 @@ describe Puppet::Type.type(:user).provider(:osx) do
     )
   end
 
+  let(:users_plist_dir) { '/var/db/dslocal/nodes/Default/users' }
+
   let(:defaults) do
     {
       'UniqueID'         => '1000',
@@ -623,7 +625,6 @@ describe Puppet::Type.type(:user).provider(:osx) do
       }
     end
 
-    let(:users_plist_dir) { '/var/db/dslocal/nodes/Default/users' }
     let(:stub_shadowhashdata) { stub('connection') }
 
     it 'should call set_salted_sha512 on 10.7 when given a a salted-SHA512 password hash' do
@@ -675,6 +676,100 @@ describe Puppet::Type.type(:user).provider(:osx) do
 
     it 'should return false if the passed users_plist does not contain a ShadowHashData key' do
       provider.get_shadow_hash_data(Hash.new).should == false
+    end
+  end
+
+  describe '#set_salted_sha512' do
+    let(:users_plist) { {'ShadowHashData' => [StringIO.new('string_data')] } }
+    let(:converted_string) { "fqfVkhMfV7LI+L287I2d8SEoo4Y5Ok8Ax2GbrCYipE1FFBnRHaUS1ZFauY45\ncYrJQIP+Lv1r9xClTUd/j/c1sSWHGS0=" }
+
+    it 'should set the SALTED-SHA512 password hash for a user in 10.7 and call the write_users_plist_to_disk method to write the plist to disk' do
+      Hash.expects(:new).never
+      Base64.expects(:decode64).with(converted_string).returns(sha512_pw_string)
+      provider.expects(:convert_xml_to_binary).with(sha512_embedded_bplist_hash).returns(sha512_embedded_bplist)
+      # Again, here's another test that's loose because of StringIO objects...
+      provider.expects(:write_users_plist_to_disk)
+      provider.set_salted_sha512(users_plist, sha512_embedded_bplist_hash, sha512_password_hash)
+    end
+
+    it 'should set the salted-SHA512 password, even if a blank shadow_hash_data hash is passed' do
+      # The only thing that sets this aside from the previous test is the
+      # Hash.new call that's expected if a shadow_hash_data argument is
+      # passed that doesn't have a 'SALTED-SHA512' key.
+      Hash.expects(:new).returns({})
+      Base64.expects(:decode64).with(converted_string).returns(sha512_pw_string)
+      provider.expects(:convert_xml_to_binary).returns(sha512_embedded_bplist)
+      provider.expects(:write_users_plist_to_disk)
+      provider.set_salted_sha512(users_plist, false, sha512_password_hash)
+    end
+  end
+
+  describe '#set_salted_pbkdf2' do
+    let(:users_plist) { {'ShadowHashData' => [StringIO.new('string_data')] } }
+
+    # The below are the result of running "[[value].pack("H*")].pack("m").strip"
+    # where value is a hex string passed by pbkdf2_password_hash and
+    # pbkdf2_salt_value
+    let(:converted_pw_string) { "BZCt4Z5pU8E1rocq53YYI1331Gxj3n+aD83yzZ59heS3yoaBASNbYVjgWjCY\nBe5IFLAnpL6cI+wpJryBciaa/7pcmlmF6BCR+miYB20pfx+qdfphdVHvFnHX\nUgBVxKDZe5ucWAWqMiuu282O6cUjgRZTrC6p6cjY8axRmg8rWV4=" }
+    let(:converted_salt_string) { "k3fEaQihyKwsPkXA1E2orQ/NhexcFNmln/xAydox8Ow=" }
+
+    it "should set the PBKDF2 password hash when the 'entropy' field is passed with a valid password hash" do
+      Base64.expects(:decode64).with(converted_pw_string).returns(pbkdf2_pw_string)
+      provider.expects(:convert_xml_to_binary).returns(pbkdf2_embedded_plist)
+      provider.expects(:write_users_plist_to_disk)
+      users_plist.expects(:[]=).with('passwd', '********')
+      provider.set_salted_pbkdf2(users_plist, pbkdf2_embedded_bplist_hash, 'entropy', pbkdf2_password_hash)
+    end
+
+    it "should set the PBKDF2 password hash when the 'salt' field is passed with a valid password hash" do
+      Base64.expects(:decode64).with(converted_salt_string).returns(pbkdf2_salt_string)
+      provider.expects(:convert_xml_to_binary).returns(pbkdf2_embedded_plist)
+      provider.expects(:write_users_plist_to_disk)
+      users_plist.expects(:[]=).with('passwd', '********')
+      provider.set_salted_pbkdf2(users_plist, pbkdf2_embedded_bplist_hash, 'salt', pbkdf2_salt_value)
+    end
+
+    it "should set the PBKDF2 password hash when the 'iterations' field is passed with a valid password hash" do
+      provider.expects(:convert_xml_to_binary).returns(pbkdf2_embedded_plist)
+      provider.expects(:write_users_plist_to_disk)
+      users_plist.expects(:[]=).with('passwd', '********')
+      provider.set_salted_pbkdf2(users_plist, pbkdf2_embedded_bplist_hash, 'iterations', pbkdf2_iterations_value)
+    end
+  end
+
+  describe '#write_users_plist_to_disk' do
+    it 'should save the passed plist to disk and convert it to a binary plist' do
+      Plist::Emit.expects(:save_plist).with(user_plist_xml, "#{users_plist_dir}/nonexistant_user.plist")
+      provider.expects(:plutil).with('-convert', 'binary1', "#{users_plist_dir}/nonexistant_user.plist")
+      provider.write_users_plist_to_disk(user_plist_xml)
+    end
+  end
+
+  describe '#write_sha1_hash' do
+    let(:password_hash_dir) { '/var/db/shadow/hash' }
+    let(:stub_file) { stub('connection') }
+
+    it "should write the sha1 hash to a file on disk named after the user's GUID and also ensure that ':ShadowHash;' is included in the user's AuthenticationAuthority" do
+      provider.expects(:get_attribute_from_dscl).with('Users', 'GeneratedUID').returns(['GUID'])
+      File.expects(:open).with("#{password_hash_dir}/GUID", 'w').yields(stub_file)
+      stub_file.expects(:write).with('sha1_password')
+      provider.expects(:dscl).with('.', '-merge', '/Users/nonexistant_user', 'AuthenticationAuthority', ';ShadowHash;').returns(true)
+      provider.write_sha1_hash('sha1_password')
+    end
+
+    it "should raise an error if Puppet cannot write to the file in /var/db/shadow/hash named after the user's GUID" do
+      provider.expects(:get_attribute_from_dscl).with('Users', 'GeneratedUID').returns(['GUID'])
+      File.expects(:open).with("#{password_hash_dir}/GUID", 'w').yields(stub_file)
+      stub_file.expects(:write).raises(Errno::EACCES, 'boom')
+      expect { provider.write_sha1_hash('sha1_password') }.to raise_error Puppet::Error, /Could not write to password hash file: Permission denied - boom/
+    end
+
+    it "should raise an error if dscl cannot merge ';ShadowHash;' into the user's AuthenticationAuthority" do
+      provider.expects(:get_attribute_from_dscl).with('Users', 'GeneratedUID').returns(['GUID'])
+      File.expects(:open).with("#{password_hash_dir}/GUID", 'w').yields(stub_file)
+      stub_file.expects(:write).with('sha1_password')
+      provider.expects(:dscl).with('.', '-merge', '/Users/nonexistant_user', 'AuthenticationAuthority', ';ShadowHash;').raises(Puppet::ExecutionFailure, 'boom')
+      expect { provider.write_sha1_hash('sha1_password') }.to raise_error Puppet::Error, /Could not set AuthenticationAuthority to ;ShadowHash;/
     end
   end
 end
