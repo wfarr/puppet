@@ -408,7 +408,10 @@ Puppet::Type.type(:user).provide :osx do
     # in Hex, but the embedded plist stores that value as a Base64 encoded
     # string. This method converts the string and calls the
     # write_users_plist_to_disk method to serialize and write the plist to disk.
-    shadow_hash_data = Hash.new unless shadow_hash_data
+    unless shadow_hash_data
+      shadow_hash_data = Hash.new
+      shadow_hash_data['SALTED-SHA512'] = StringIO.new
+    end
     shadow_hash_data['SALTED-SHA512'].string = Base64.decode64([[value].pack("H*")].pack("m").strip)
     binary_plist = convert_xml_to_binary(shadow_hash_data)
     users_plist['ShadowHashData'][0].string = binary_plist
