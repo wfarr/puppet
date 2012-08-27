@@ -10,18 +10,11 @@ describe Puppet::Type.type(:user).provider(:osx) do
     )
   end
 
+  let(:provider) { resource.provider }
   let(:users_plist_dir) { '/var/db/dslocal/nodes/Default/users' }
 
-  let(:defaults) do
-    {
-      'UniqueID'         => '1000',
-      'RealName'         => resource[:name],
-      'PrimaryGroupID'   => '20',
-      'UserShell'        => '/bin/bash',
-      'NFSHomeDirectory' => "/Users/#{resource[:name]}"
-    }
-  end
-
+  # This is the output of doing `dscl -plist . read /Users/<username>` which
+  # will return a hash of keys whose values are all arrays.
   let(:user_plist_xml) do
     '<?xml version="1.0" encoding="UTF-8"?>
     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -51,6 +44,8 @@ describe Puppet::Type.type(:user).provider(:osx) do
     </plist>'
   end
 
+  # This is the same as above, however in a native Ruby hash instead
+  # of XML
   let(:user_plist_hash) do
     {
       "dsAttrTypeStandard:RealName"         => ["testuser"],
@@ -61,151 +56,50 @@ describe Puppet::Type.type(:user).provider(:osx) do
     }
   end
 
-  let(:user_plist_resource) do
-    {
-      :ensure   => :present,
-      :provider => :osx,
-      :comment  => 'testuser',
-      :name     => 'testuser',
-      :uid      => 1000,
-      :gid      => 22,
-      :home     => '/Users/testuser'
-    }
-  end
-
-  let(:group_plist_hash) do
-    [{
-      'dsAttrTypeStandard:RecordName'      => ['testgroup'],
-      'dsAttrTypeStandard:GroupMembership' => [
-                                                'testuser',
-                                                'nonexistant_user',
-                                                'jeff',
-                                                'zack'
-                                              ],
-      'dsAttrTypeStandard:GroupMembers'    => [
-                                                'guidtestuser',
-                                                'guidjeff',
-                                                'guidzack'
-                                              ],
-    },
-    {
-      'dsAttrTypeStandard:RecordName'      => ['second'],
-      'dsAttrTypeStandard:GroupMembership' => [
-                                                'nonexistant_user',
-                                                'jeff',
-                                              ],
-      'dsAttrTypeStandard:GroupMembers'    => [
-                                                'guidtestuser',
-                                                'guidjeff',
-                                              ],
-    },
-    {
-      'dsAttrTypeStandard:RecordName'      => ['third'],
-      'dsAttrTypeStandard:GroupMembership' => [
-                                                'jeff',
-                                                'zack'
-                                              ],
-      'dsAttrTypeStandard:GroupMembers'    => [
-                                                'guidjeff',
-                                                'guidzack'
-                                              ],
-    }]
-  end
-
-  let(:group_plist_hash_guid) do
-    [{
-      'dsAttrTypeStandard:RecordName'      => ['testgroup'],
-      'dsAttrTypeStandard:GroupMembership' => [
-                                                'testuser',
-                                                'jeff',
-                                                'zack'
-                                              ],
-      'dsAttrTypeStandard:GroupMembers'    => [
-                                                'guidnonexistant_user',
-                                                'guidtestuser',
-                                                'guidjeff',
-                                                'guidzack'
-                                              ],
-    },
-    {
-      'dsAttrTypeStandard:RecordName'      => ['second'],
-      'dsAttrTypeStandard:GroupMembership' => [
-                                                'testuser',
-                                                'jeff',
-                                                'zack'
-                                              ],
-      'dsAttrTypeStandard:GroupMembers'    => [
-                                                'guidtestuser',
-                                                'guidjeff',
-                                                'guidzack'
-                                              ],
-    },
-    {
-      'dsAttrTypeStandard:RecordName'      => ['third'],
-      'dsAttrTypeStandard:GroupMembership' => [
-                                                'testuser',
-                                                'jeff',
-                                                'zack'
-                                              ],
-      'dsAttrTypeStandard:GroupMembers'    => [
-                                                'guidnonexistant_user',
-                                                'guidtestuser',
-                                                'guidjeff',
-                                                'guidzack'
-                                              ],
-    }]
-  end
-
-  let(:empty_plist) do
-    '<?xml version="1.0" encoding="UTF-8"?>
-    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-    <plist version="1.0">
-    <dict>
-    </dict>
-    </plist>'
-  end
-
-  let(:sha512_shadowhashdata_plist) do
-    '<?xml version="1.0" encoding="UTF-8"?>
-     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-     <plist version="1.0">
-     <dict>
-       <key>dsAttrTypeNative:ShadowHashData</key>
-       <array>
-         <string>62706c69 73743030 d101025d 53414c54 45442d53 48413531 324f1044 7ea7d592 131f57b2 c8f8bdbc ec8d9df1 2128a386 393a4f00 c7619bac 2622a44d 451419d1 1da512d5 915ab98e 39718ac9 4083fe2e fd6bf710 a54d477f 8ff735b1 2587192d 080b1900 00000000 00010100 00000000 00000300 00000000 00000000 00000000 000060</string>
-       </array>
-     </dict>
-     </plist>'
-  end
-
+  # The below value is the result of executing
+  # `dscl -plist . read /Users/<username> ShadowHashData` on a 10.7
+  # system and converting it to a native Ruby Hash with Plist.parse_xml
   let(:sha512_shadowhashdata_hash) do
     {
       'dsAttrTypeNative:ShadowHashData' => ['62706c69 73743030 d101025d 53414c54 45442d53 48413531 324f1044 7ea7d592 131f57b2 c8f8bdbc ec8d9df1 2128a386 393a4f00 c7619bac 2622a44d 451419d1 1da512d5 915ab98e 39718ac9 4083fe2e fd6bf710 a54d477f 8ff735b1 2587192d 080b1900 00000000 00010100 00000000 00000300 00000000 00000000 00000000 000060']
     }
   end
 
+  # The below is a binary plist that is stored in the ShadowHashData key
+  # on a 10.7 system.
   let(:sha512_embedded_bplist) do
     "bplist00\321\001\002]SALTED-SHA512O\020D~\247\325\222\023\037W\262\310\370\275\274\354\215\235\361!(\243\2069:O\000\307a\233\254&\"\244ME\024\031\321\035\245\022\325\221Z\271\2169q\212\311@\203\376.\375k\367\020\245MG\177\217\3675\261%\207\031-\b\v\031\000\000\000\000\000\000\001\001\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000`"
   end
 
+  # The below is a Base64 encoded string representing a salted-SHA512 password
+  # hash.
   let(:sha512_pw_string) do
     "~\247\325\222\023\037W\262\310\370\275\274\354\215\235\361!(\243\2069:O\000\307a\233\254&\"\244ME\024\031\321\035\245\022\325\221Z\271\2169q\212\311@\203\376.\375k\367\020\245MG\177\217\3675\261%\207\031-"
   end
 
+  # The below is the result of converting sha512_embedded_bplist to XML and
+  # parsing it with Plist.parse_xml. It is a Ruby Hash whose value is a
+  # StringIO object holding a Base64 encoded salted-SHA512 password hash.
   let(:sha512_embedded_bplist_hash) do
     { 'SALTED-SHA512' => StringIO.new(sha512_pw_string) }
   end
 
+  # The value below is the result of converting sha512_pw_string to Hex.
   let(:sha512_password_hash) do
     '7ea7d592131f57b2c8f8bdbcec8d9df12128a386393a4f00c7619bac2622a44d451419d11da512d5915ab98e39718ac94083fe2efd6bf710a54d477f8ff735b12587192d'
   end
 
+  # The below value is the result of executing
+  # `dscl -plist . read /Users/<username> ShadowHashData` on a 10.8
+  # system and converting it to a native Ruby Hash with Plist.parse_xml
   let(:pbkdf2_shadowhashdata_hash) do
     {
       "dsAttrTypeNative:ShadowHashData"=>["62706c69 73743030 d101025f 10145341 4c544544 2d534841 3531322d 50424b44 4632d303 04050607 0857656e 74726f70 79547361 6c745a69 74657261 74696f6e 734f1080 0590ade1 9e6953c1 35ae872a e7761823 5df7d46c 63de7f9a 0fcdf2cd 9e7d85e4 b7ca8681 01235b61 58e05a30 9805ee48 14b027a4 be9c23ec 2926bc81 72269aff ba5c9a59 85e81091 fa689807 6d297f1f aa75fa61 7551ef16 71d75200 55c4a0d9 7b9b9c58 05aa322b aedbcd8e e9c52381 1653ac2e a9e9c8d8 f1ac519a 0f2b595e 4f102093 77c46908 a1c8ac2c 3e45c0d4 4da8ad0f cd85ec5c 14d9a59f fc40c9da 31f0ec11 60b0080b 22293136 41c4e700 00000000 00010100 00000000 00000900 00000000 00000000 00000000 0000ea"]
     }
   end
 
+  # The below value is the result of converting pbkdf2_embedded_bplist to XML and
+  # parsing it with Plist.parse_xml.
   let(:pbkdf2_embedded_bplist_hash) do
     {
       'SALTED-SHA512-PBKDF2' => {
@@ -216,101 +110,53 @@ describe Puppet::Type.type(:user).provider(:osx) do
     }
   end
 
+  # The value below is the result of converting pbkdf2_pw_string to Hex.
   let(:pbkdf2_password_hash) do
     '0590ade19e6953c135ae872ae77618235df7d46c63de7f9a0fcdf2cd9e7d85e4b7ca868101235b6158e05a309805ee4814b027a4be9c23ec2926bc8172269affba5c9a5985e81091fa6898076d297f1faa75fa617551ef1671d7520055c4a0d97b9b9c5805aa322baedbcd8ee9c523811653ac2ea9e9c8d8f1ac519a0f2b595e'
   end
 
+  # The below is a binary plist that is stored in the ShadowHashData key
+  # of a 10.8 system.
   let(:pbkdf2_embedded_plist) do
     "bplist00\321\001\002_\020\024SALTED-SHA512-PBKDF2\323\003\004\005\006\a\bWentropyTsaltZiterationsO\020\200\005\220\255\341\236iS\3015\256\207*\347v\030#]\367\324lc\336\177\232\017\315\362\315\236}\205\344\267\312\206\201\001#[aX\340Z0\230\005\356H\024\260'\244\276\234#\354)&\274\201r&\232\377\272\\\232Y\205\350\020\221\372h\230\am)\177\037\252u\372auQ\357\026q\327R\000U\304\240\331{\233\234X\005\2522+\256\333\315\216\351\305#\201\026S\254.\251\351\310\330\361\254Q\232\017+Y^O\020 \223w\304i\b\241\310\254,>E\300\324M\250\255\017\315\205\354\\\024\331\245\237\374@\311\3321\360\354\021`\260\b\v\")16A\304\347\000\000\000\000\000\000\001\001\000\000\000\000\000\000\000\t\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\352"
   end
 
+  # The below value is a Base64 encoded string representing a PBKDF2 password
+  # hash.
   let(:pbkdf2_pw_string) do
     "\005\220\255\341\236iS\3015\256\207*\347v\030#]\367\324lc\336\177\232\017\315\362\315\236}\205\344\267\312\206\201\001#[aX\340Z0\230\005\356H\024\260'\244\276\234#\354)&\274\201r&\232\377\272\\\232Y\205\350\020\221\372h\230\am)\177\037\252u\372auQ\357\026q\327R\000U\304\240\331{\233\234X\005\2522+\256\333\315\216\351\305#\201\026S\254.\251\351\310\330\361\254Q\232\017+Y^"
   end
 
+  # The below value is a Base64 encoded string representing a PBKDF2 salt
+  # string.
   let(:pbkdf2_salt_string) do
     "\223w\304i\b\241\310\254,>E\300\324M\250\255\017\315\205\354\\\024\331\245\237\374@\311\3321\360\354"
   end
 
+  # The below value represents the Hex value of a PBKDF2 salt string
   let(:pbkdf2_salt_value) do
     "9377c46908a1c8ac2c3e45c0d44da8ad0fcd85ec5c14d9a59ffc40c9da31f0ec"
   end
 
+  # The below value is a Fixnum iterations value used in the PBKDF2
+  # key stretching algorithm
   let(:pbkdf2_iterations_value) do
     24752
   end
 
-  let(:groups_xml) do
-    '<?xml version="1.0" encoding="UTF-8"?>
-     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-     <plist version="1.0">
-     <array>
-       <dict>
-         <key>dsAttrTypeStandard:AppleMetaNodeLocation</key>
-         <array>
-           <string>/Local/Default</string>
-         </array>
-         <key>dsAttrTypeStandard:GeneratedUID</key>
-         <array>
-           <string>ABCDEFAB-CDEF-ABCD-EFAB-CDEF00000053</string>
-         </array>
-         <key>dsAttrTypeStandard:Password</key>
-         <array>
-           <string>*</string>
-         </array>
-         <key>dsAttrTypeStandard:PrimaryGroupID</key>
-         <array>
-           <string>83</string>
-         </array>
-         <key>dsAttrTypeStandard:RealName</key>
-         <array>
-           <string>SPAM Assassin Group 2</string>
-         </array>
-         <key>dsAttrTypeStandard:RecordName</key>
-         <array>
-           <string>_amavisd</string>
-           <string>amavisd</string>
-         </array>
-         <key>dsAttrTypeStandard:RecordType</key>
-         <array>
-           <string>dsRecTypeStandard:Groups</string>
-         </array>
-       </dict>
-      </array>
-    </plist>'
-  end
-
-  let(:groups_hash) do
-    [{ 'dsAttrTypeStandard:AppleMetaNodeLocation' => ['/Local/Default'],
-         'dsAttrTypeStandard:GeneratedUID'          => ['ABCDEFAB-CDEF-ABCD-EFAB-CDEF00000053'],
-         'dsAttrTypeStandard:Password'              => ['*'],
-         'dsAttrTypeStandard:PrimaryGroupID'        => ['83'],
-         'dsAttrTypeStandard:RealName'              => ['SPAM Assassin Group 2'],
-         'dsAttrTypeStandard:RecordName'            => ['_amavisd', 'amavisd'],
-         'dsAttrTypeStandard:RecordType'            => ['dsRecTypeStandard:Groups']
-      }]
-  end
-
-  let(:user_guid_xml) do
-    '<?xml version="1.0" encoding="UTF-8"?>
-     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-     <plist version="1.0">
-     <dict>
-       <key>dsAttrTypeStandard:GeneratedUID</key>
-       <array>
-         <string>DCC660C6-F5A9-446D-B9FF-3C0258AB5BA0</string>
-       </array>
-     </dict>
-     </plist>'
-  end
-
-  let(:user_guid_hash) do
-    { 'dsAttrTypeStandard:GeneratedUID' => ['DCC660C6-F5A9-446D-B9FF-3C0258AB5BA0'] }
-  end
-
-  let(:provider) { resource.provider }
-
   describe '#create with defaults' do
+    # The below hash contains the default values the provider will use
+    # if a value is not passed in a resource declaration.
+    let(:defaults) do
+      {
+        'UniqueID'         => '1000',
+        'RealName'         => resource[:name],
+        'PrimaryGroupID'   => '20',
+        'UserShell'        => '/bin/bash',
+        'NFSHomeDirectory' => "/Users/#{resource[:name]}"
+      }
+    end
+
     before :each do
       provider.expects(:dscl).with('.', '-create', "/Users/#{resource[:name]}").returns true
       provider.expects(:next_system_id).returns(defaults['UniqueID'])
@@ -319,10 +165,19 @@ describe Puppet::Type.type(:user).provider(:osx) do
       end
     end
 
+    let(:resource_with_groups) do
+      Puppet::Type.type(:user).new(
+        :name     => 'nonexistant_user',
+        :provider => :osx,
+        :groups   => 'groups'
+      )
+    end
+
     it 'should create a user with defaults given a minimal declaration' do
       provider.create
     end
 
+    # TODO: This is most likely NOT the way to do this.
     it 'should call #password= if a password attribute is specified' do
       resource[:password] = 'somepass'
       provider.expects(:password=).with('somepass')
@@ -347,6 +202,15 @@ describe Puppet::Type.type(:user).provider(:osx) do
   end
 
   describe 'self#get_all_users' do
+    let(:empty_plist) do
+      '<?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0">
+      <dict>
+      </dict>
+      </plist>'
+    end
+
     it 'should return a hash of user attributes' do
       provider.class.expects(:dscl).with('-plist', '.', 'readall', '/Users').returns(user_plist_xml)
       provider.class.get_all_users.should == user_plist_hash
@@ -359,6 +223,18 @@ describe Puppet::Type.type(:user).provider(:osx) do
   end
 
   describe 'self#generate_attribute_hash' do
+    let(:user_plist_resource) do
+      {
+        :ensure   => :present,
+        :provider => :osx,
+        :comment  => 'testuser',
+        :name     => 'testuser',
+        :uid      => 1000,
+        :gid      => 22,
+        :home     => '/Users/testuser'
+      }
+    end
+
     it 'should return :uid values as a Fixnum' do
       provider.class.generate_attribute_hash(user_plist_hash)[:uid].class.should == Fixnum
     end
@@ -393,6 +269,96 @@ describe Puppet::Type.type(:user).provider(:osx) do
   end
 
   describe '#groups' do
+    # The below represents the result of running Plist.parse_xml on XML
+    # data returned from the `dscl -plist . readall /Groups` command.
+    # (AKA: What the get_list_of_groups method returns)
+    let(:group_plist_hash) do
+      [{
+        'dsAttrTypeStandard:RecordName'      => ['testgroup'],
+        'dsAttrTypeStandard:GroupMembership' => [
+                                                  'testuser',
+                                                  'nonexistant_user',
+                                                  'jeff',
+                                                  'zack'
+                                                ],
+        'dsAttrTypeStandard:GroupMembers'    => [
+                                                  'guidtestuser',
+                                                  'guidjeff',
+                                                  'guidzack'
+                                                ],
+      },
+      {
+        'dsAttrTypeStandard:RecordName'      => ['second'],
+        'dsAttrTypeStandard:GroupMembership' => [
+                                                  'nonexistant_user',
+                                                  'jeff',
+                                                ],
+        'dsAttrTypeStandard:GroupMembers'    => [
+                                                  'guidtestuser',
+                                                  'guidjeff',
+                                                ],
+      },
+      {
+        'dsAttrTypeStandard:RecordName'      => ['third'],
+        'dsAttrTypeStandard:GroupMembership' => [
+                                                  'jeff',
+                                                  'zack'
+                                                ],
+        'dsAttrTypeStandard:GroupMembers'    => [
+                                                  'guidjeff',
+                                                  'guidzack'
+                                                ],
+      }]
+    end
+
+    # The below represents the result of running Plist.parse_xml on XML
+    # data returned from the `dscl -plist . readall /Groups` command.
+    # (AKA: What the get_list_of_groups method returns)
+    let(:group_plist_hash_guid) do
+      [{
+        'dsAttrTypeStandard:RecordName'      => ['testgroup'],
+        'dsAttrTypeStandard:GroupMembership' => [
+                                                  'testuser',
+                                                  'jeff',
+                                                  'zack'
+                                                ],
+        'dsAttrTypeStandard:GroupMembers'    => [
+                                                  'guidnonexistant_user',
+                                                  'guidtestuser',
+                                                  'guidjeff',
+                                                  'guidzack'
+                                                ],
+      },
+      {
+        'dsAttrTypeStandard:RecordName'      => ['second'],
+        'dsAttrTypeStandard:GroupMembership' => [
+                                                  'testuser',
+                                                  'jeff',
+                                                  'zack'
+                                                ],
+        'dsAttrTypeStandard:GroupMembers'    => [
+                                                  'guidtestuser',
+                                                  'guidjeff',
+                                                  'guidzack'
+                                                ],
+      },
+      {
+        'dsAttrTypeStandard:RecordName'      => ['third'],
+        'dsAttrTypeStandard:GroupMembership' => [
+                                                  'testuser',
+                                                  'jeff',
+                                                  'zack'
+                                                ],
+        'dsAttrTypeStandard:GroupMembers'    => [
+                                                  'guidnonexistant_user',
+                                                  'guidtestuser',
+                                                  'guidjeff',
+                                                  'guidzack'
+                                                ],
+      }]
+    end
+
+
     it "should return a list of groups if the user's name matches GroupMembership" do
       provider.expects(:get_list_of_groups).returns(group_plist_hash)
       provider.expects(:get_attribute_from_dscl).with('Users', 'GeneratedUID').returns(['guidnonexistant_user'])
@@ -473,6 +439,61 @@ describe Puppet::Type.type(:user).provider(:osx) do
   end
 
   describe '#get_list_of_groups' do
+    # The below value is the result of running `dscl -plist . readall /Groups`
+    # on an OS X system.
+    let(:groups_xml) do
+      '<?xml version="1.0" encoding="UTF-8"?>
+       <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+       <plist version="1.0">
+       <array>
+         <dict>
+           <key>dsAttrTypeStandard:AppleMetaNodeLocation</key>
+           <array>
+             <string>/Local/Default</string>
+           </array>
+           <key>dsAttrTypeStandard:GeneratedUID</key>
+           <array>
+             <string>ABCDEFAB-CDEF-ABCD-EFAB-CDEF00000053</string>
+           </array>
+           <key>dsAttrTypeStandard:Password</key>
+           <array>
+             <string>*</string>
+           </array>
+           <key>dsAttrTypeStandard:PrimaryGroupID</key>
+           <array>
+             <string>83</string>
+           </array>
+           <key>dsAttrTypeStandard:RealName</key>
+           <array>
+             <string>SPAM Assassin Group 2</string>
+           </array>
+           <key>dsAttrTypeStandard:RecordName</key>
+           <array>
+             <string>_amavisd</string>
+             <string>amavisd</string>
+           </array>
+           <key>dsAttrTypeStandard:RecordType</key>
+           <array>
+             <string>dsRecTypeStandard:Groups</string>
+           </array>
+         </dict>
+        </array>
+      </plist>'
+    end
+
+    # The below value is the result of executing Plist.parse_xml on
+    # groups_xml
+    let(:groups_hash) do
+      [{ 'dsAttrTypeStandard:AppleMetaNodeLocation' => ['/Local/Default'],
+           'dsAttrTypeStandard:GeneratedUID'          => ['ABCDEFAB-CDEF-ABCD-EFAB-CDEF00000053'],
+           'dsAttrTypeStandard:Password'              => ['*'],
+           'dsAttrTypeStandard:PrimaryGroupID'        => ['83'],
+           'dsAttrTypeStandard:RealName'              => ['SPAM Assassin Group 2'],
+           'dsAttrTypeStandard:RecordName'            => ['_amavisd', 'amavisd'],
+           'dsAttrTypeStandard:RecordType'            => ['dsRecTypeStandard:Groups']
+        }]
+    end
+
     it 'should return a array of hashes containing group data' do
       provider.expects(:dscl).with('-plist', '.', 'readall', '/Groups').returns(groups_xml)
       provider.get_list_of_groups.should == groups_hash
@@ -480,6 +501,28 @@ describe Puppet::Type.type(:user).provider(:osx) do
   end
 
   describe '#get_attribute_from_dscl' do
+    # The below value is the result of executing
+    # `dscl -plist . read /Users/<username/ GeneratedUID`
+    # on an OS X system. 
+    let(:user_guid_xml) do
+      '<?xml version="1.0" encoding="UTF-8"?>
+       <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+       <plist version="1.0">
+       <dict>
+         <key>dsAttrTypeStandard:GeneratedUID</key>
+         <array>
+           <string>DCC660C6-F5A9-446D-B9FF-3C0258AB5BA0</string>
+         </array>
+       </dict>
+       </plist>'
+    end
+
+    # The below value is the result of parsing user_guid_xml with
+    # Plist.parse_xml
+    let(:user_guid_hash) do
+      { 'dsAttrTypeStandard:GeneratedUID' => ['DCC660C6-F5A9-446D-B9FF-3C0258AB5BA0'] }
+    end
+
     it 'should return a hash containing a user\'s dscl attribute data' do
       provider.expects(:dscl).with('-plist', '.', 'read', '/Users/nonexistant_user', 'GeneratedUID').returns(user_guid_xml)
       provider.get_attribute_from_dscl('Users', 'GeneratedUID').should == user_guid_hash
