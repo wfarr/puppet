@@ -264,6 +264,45 @@ Puppet::Type.type(:user).provide :osx do
     end
   end
 
+  def iterations
+    if (Puppet::Util::Package.versioncmp(Facter.value(:macosx_productversion_major), '10.7') > 0)
+      shadow_hash_data = get_attribute_from_dscl('Users', 'ShadowHashData')
+      return nil if shadow_hash_data.empty?
+      embedded_binary_plist = get_embedded_binary_plist(shadow_hash_data)
+      if embedded_binary_plist['SALTED-SHA512-PBKDF2']
+        get_salted_sha512_pbkdf2('iterations', embedded_binary_plist)
+      end
+    end
+  end
+
+  def iterations=(value)
+    if (Puppet::Util::Package.versioncmp(Facter.value(:macosx_productversion_major), '10.7') > 0)
+      users_plist = Plist::parse_xml(plutil '-convert', 'xml1', '-o', '/dev/stdout', "#{users_plist_dir}/#{@resource.name}.plist")
+      shadow_hash_data = get_shadow_hash_data(users_plist)
+      set_salted_pbkdf2(users_plist, shadow_hash_data, 'iterations', value)
+    end
+  end
+
+  def salt
+    if (Puppet::Util::Package.versioncmp(Facter.value(:macosx_productversion_major), '10.7') > 0)
+      shadow_hash_data = get_attribute_from_dscl('Users', 'ShadowHashData')
+      return nil if shadow_hash_data.empty?
+      embedded_binary_plist = get_embedded_binary_plist(shadow_hash_data)
+      if embedded_binary_plist['SALTED-SHA512-PBKDF2']
+        get_salted_sha512_pbkdf2('salt', embedded_binary_plist)
+      end
+    end
+  end
+
+  def salt=(value)
+    if (Puppet::Util::Package.versioncmp(Facter.value(:macosx_productversion_major), '10.7') > 0)
+      users_plist = Plist::parse_xml(plutil '-convert', 'xml1', '-o', '/dev/stdout', "#{users_plist_dir}/#{@resource.name}.plist")
+      shadow_hash_data = get_shadow_hash_data(users_plist)
+      set_salted_pbkdf2(users_plist, shadow_hash_data, 'salt', value)
+    end
+  end
+
+
   ##                ##
   ## Helper Methods ##
   ##                ##
