@@ -184,6 +184,9 @@ describe Puppet::Type.type(:user).provider(:osx) do
       provider.create
     end
 
+    it 'should call #iterations= if an iterations attribute is specified'
+    it 'should call #salt= if an iterations attribute is specified'
+
     #it 'should call #groups= if a groups attribute is specified' do
     #  resource[:groups] = 'groups'
     #  provider.expects(:groups=).with('some,groups')

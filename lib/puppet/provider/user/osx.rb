@@ -160,6 +160,10 @@ Puppet::Type.type(:user).provide :osx do
         case attribute
         when :password
           send('password=', value)
+        when :iterations
+          send('iterations=', value)
+        when :salt
+          send('salt=', value)
         when :groups
           send('groups=', value)
         else
