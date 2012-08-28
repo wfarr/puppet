@@ -1,6 +1,7 @@
 ## TODO LIST ##
 #1. Tests
 #2. Check individual getter/setter methods with Puppet manifests
+##  - including home, gid, comment, and shell
 #3. Make sure gid doesn't show up in groups - even with changes
 #4. Fix create method to pass guid for 10.5/10.6 passwords
 
@@ -303,6 +304,23 @@ Puppet::Type.type(:user).provide :osx do
       users_plist = Plist::parse_xml(plutil '-convert', 'xml1', '-o', '/dev/stdout', "#{users_plist_dir}/#{@resource.name}.plist")
       shadow_hash_data = get_shadow_hash_data(users_plist)
       set_salted_pbkdf2(users_plist, shadow_hash_data, 'salt', value)
+    end
+  end
+
+  ['home', 'uid', 'gid', 'comment', 'shell'].each do |getter_method|
+    define_method(getter_method) do
+      ds_symbolized_value = self.class.ns_to_ds_attribute_map[getter_method.intern]
+      returnvalue = get_attribute_from_dscl('Users', ds_symbolized_value)
+      case getter_method
+      when 'gid', 'uid'
+        Integer(returnvalue["dsAttrTypeStandard:#{ds_symbolized_value}"][0])
+      else
+        returnvalue["dsAttrTypeStandard:#{ds_symbolized_value}"][0]
+      end
+    end
+
+    define_method("#{getter_method}=") do |value|
+      dscl '-merge', "/Users/#{resource.name}", self.class.ns_to_ds_attribute_map[getter_method.intern], value
     end
   end
 
