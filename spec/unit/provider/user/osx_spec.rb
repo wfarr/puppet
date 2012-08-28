@@ -699,7 +699,7 @@ describe Puppet::Type.type(:user).provider(:osx) do
       provider.expects(:get_shadow_hash_data).with('ruby_hash').returns(stub_shadowhashdata)
       stub_shadowhashdata.expects(:[]).with('SALTED-SHA512').returns(true)
       stub_shadowhashdata.expects(:delete).with('SALTED-SHA512')
-      provider.expects(:set_salted_pbkdf2).with('ruby_hash', stub_shadowhashdata, pbkdf2_password_hash)
+      provider.expects(:set_salted_pbkdf2).with('ruby_hash', stub_shadowhashdata, 'entropy', pbkdf2_password_hash)
       provider.write_password_to_users_plist(pbkdf2_password_hash)
     end
   end

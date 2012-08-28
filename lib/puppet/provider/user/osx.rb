@@ -427,7 +427,7 @@ Puppet::Type.type(:user).provide :osx do
       set_salted_sha512(users_plist, shadow_hash_data, value)
     else
       shadow_hash_data.delete('SALTED-SHA512') if shadow_hash_data['SALTED-SHA512']
-      set_salted_pbkdf2(users_plist, shadow_hash_data, value)
+      set_salted_pbkdf2(users_plist, shadow_hash_data, 'entropy', value)
     end
   end
 
