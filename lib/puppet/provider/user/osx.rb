@@ -157,14 +157,7 @@ Puppet::Type.type(:user).provide :osx do
 ##                   ##
 
   def exists?
-    # Check for existance of a user. Use a dscl call to determine whether
-    # the user exists. Rescue the dscl error if the user doesn't exist
-    # and return false.
-    begin
-      return true if dscl '.', 'read', "/Users/#{@resource.name}"
-    rescue
-      return false
-    end
+    @resource.name == @property_hash[:name] ? true : false
   end
 
   def create
