@@ -270,9 +270,9 @@ Puppet::Type.type(:user).provide :osx do
     end
   end
 
-  ['home', 'uid', 'gid', 'comment', 'shell'].each do |getter_method|
-    define_method("#{getter_method}=") do |value|
-      dscl '-merge', "/Users/#{resource.name}", self.class.ns_to_ds_attribute_map[getter_method.intern], value
+  ['home', 'uid', 'gid', 'comment', 'shell'].each do |setter_method|
+    define_method("#{setter_method}=") do |value|
+      dscl '-merge', "/Users/#{resource.name}", self.class.ns_to_ds_attribute_map[setter_method.intern], value
     end
   end
 
