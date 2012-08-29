@@ -197,7 +197,7 @@ Puppet::Type.type(:user).provide :osx do
     # Note that using this method misses nested group membership. It will only
     # report explicit group membership.
     groups_array = []
-    users_guid = get_attribute_from_dscl('Users', 'GeneratedUID')[0]
+    users_guid = @property_hash[:guid]
 
     get_list_of_groups.each do |group|
       groups_array << group["dsAttrTypeStandard:RecordName"][0] if group["dsAttrTypeStandard:GroupMembership"] and group["dsAttrTypeStandard:GroupMembership"].include?(@resource.name)
@@ -213,7 +213,7 @@ Puppet::Type.type(:user).provide :osx do
     groups_to_add.each do |group|
       begin
         dscl '.', '-merge', "/Groups/#{group}", 'GroupMembership', @resource.name
-        dscl '.', '-merge', "/Groups/#{group}", 'GroupMembers', get_attribute_from_dscl('Users', 'GeneratedUID')["dsAttrTypeStandard:GeneratedUID"][0]
+        dscl '.', '-merge', "/Groups/#{group}", 'GroupMembers', @property_hash[:guid]
       rescue
         fail("OS X Provider: Unable to add #{@resource.name} to #{group}")
       end
@@ -228,7 +228,7 @@ Puppet::Type.type(:user).provide :osx do
     # a version greater than 10.2) and then calls the correct method to
     # retrieve the password hash
     if (Puppet::Util::Package.versioncmp(Facter.value(:macosx_productversion_major), '10.7') == -1)
-      user_guid = get_attribute_from_dscl('Users', 'GeneratedUID')['dsAttrTypeStandard:GeneratedUID'][0]
+      user_guid = @property_hash[:guid]
       get_sha1(user_guid)
     else
       shadow_hash_data = get_attribute_from_dscl('Users', 'ShadowHashData')
@@ -308,17 +308,6 @@ Puppet::Type.type(:user).provide :osx do
   end
 
   ['home', 'uid', 'gid', 'comment', 'shell'].each do |getter_method|
-    define_method(getter_method) do
-      ds_symbolized_value = self.class.ns_to_ds_attribute_map[getter_method.intern]
-      returnvalue = get_attribute_from_dscl('Users', ds_symbolized_value)
-      case getter_method
-      when 'gid', 'uid'
-        Integer(returnvalue["dsAttrTypeStandard:#{ds_symbolized_value}"][0])
-      else
-        returnvalue["dsAttrTypeStandard:#{ds_symbolized_value}"][0]
-      end
-    end
-
     define_method("#{getter_method}=") do |value|
       dscl '-merge', "/Users/#{resource.name}", self.class.ns_to_ds_attribute_map[getter_method.intern], value
     end
@@ -522,7 +511,7 @@ Puppet::Type.type(:user).provide :osx do
   end
 
   def write_sha1_hash(value)
-    users_guid = get_attribute_from_dscl('Users', 'GeneratedUID')[0]
+    users_guid = @property_hash[:guid]
     password_hash_file = "#{password_hash_dir}/#{users_guid}"
     begin
       File.open(password_hash_file, 'w') { |f| f.write(value)}
