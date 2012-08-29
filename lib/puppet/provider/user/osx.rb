@@ -117,6 +117,38 @@ Puppet::Type.type(:user).provide :osx do
     end
     attribute_hash[:ensure] = :present
     attribute_hash[:provider] = :osx
+    attribute_hash[:shadowhashdata] = get_attribute_from_dscl('Users', attribute_hash[:name], 'ShadowHashData')
+
+    #####
+    # Get Groups
+    ####
+    groups_array = []
+    get_list_of_groups.each do |group|
+      groups_array << group["dsAttrTypeStandard:RecordName"][0] if group["dsAttrTypeStandard:GroupMembership"] and group["dsAttrTypeStandard:GroupMembership"].include?(attribute_hash[:name])
+      groups_array << group["dsAttrTypeStandard:RecordName"][0] if group["dsAttrTypeStandard:GroupMembers"] and group["dsAttrTypeStandard:GroupMembers"].include?(attribute_hash[:guid])
+    end
+    attribute_hash[:groups] = groups_array.uniq.sort.join(',')
+
+    #####
+    # Get Password/Salt/Iterations
+    #####
+    if (Puppet::Util::Package.versioncmp(Facter.value(:macosx_productversion_major), '10.7') == -1)
+      get_sha1(attribute_hash[:guid])
+    else
+      if attribute_hash[:shadowhashdata].empty?
+        attribute_hash[:password] = '*'
+      else
+        embedded_binary_plist = get_embedded_binary_plist(attribute_hash[:shadowhashdata])
+        if embedded_binary_plist['SALTED-SHA512']
+          attribute_hash[:password] = get_salted_sha512(embedded_binary_plist)
+        else
+          attribute_hash[:password] = get_salted_sha512_pbkdf2('entropy', embedded_binary_plist)
+          attribute_hash[:salt] = get_salted_sha512_pbkdf2('salt', embedded_binary_plist)
+          attribute_hash[:iterations] = get_salted_sha512_pbkdf2('iterations', embedded_binary_plist)
+        end
+      end
+    end
+
     attribute_hash
   end
 
@@ -188,24 +220,6 @@ Puppet::Type.type(:user).provide :osx do
 ## Getter/Setter Methods ##
 ##                       ##
 
-  def groups
-    # Local groups report group membership via dscl, and so this method gets
-    # an array of hashes that correspond to every local group's attributes,
-    # iterates through them, and populates an array with the list of groups
-    # for which the user is a member (based on username).
-    #
-    # Note that using this method misses nested group membership. It will only
-    # report explicit group membership.
-    groups_array = []
-    users_guid = @property_hash[:guid]
-
-    get_list_of_groups.each do |group|
-      groups_array << group["dsAttrTypeStandard:RecordName"][0] if group["dsAttrTypeStandard:GroupMembership"] and group["dsAttrTypeStandard:GroupMembership"].include?(@resource.name)
-      groups_array << group["dsAttrTypeStandard:RecordName"][0] if group["dsAttrTypeStandard:GroupMembers"] and group["dsAttrTypeStandard:GroupMembers"].include?(users_guid)
-    end
-    groups_array.uniq.sort.join(',')
-  end
-
   def groups=(value)
     # In the setter method we're only going to take action on groups for which
     # the user is not currently a member.
@@ -216,28 +230,6 @@ Puppet::Type.type(:user).provide :osx do
         dscl '.', '-merge', "/Groups/#{group}", 'GroupMembers', @property_hash[:guid]
       rescue
         fail("OS X Provider: Unable to add #{@resource.name} to #{group}")
-      end
-    end
-  end
-
-  def password
-    # Passwords are hard on OS X, yo. 10.6 used a SHA1 hash, 10.7 used a
-    # salted-SHA512 hash, and 10.8 used a salted-PBKDF2 password. The
-    # password getter method uses Puppet::Util::Package.versioncmp to
-    # compare the version of OS X (it handles the condition that 10.10 is
-    # a version greater than 10.2) and then calls the correct method to
-    # retrieve the password hash
-    if (Puppet::Util::Package.versioncmp(Facter.value(:macosx_productversion_major), '10.7') == -1)
-      user_guid = @property_hash[:guid]
-      get_sha1(user_guid)
-    else
-      shadow_hash_data = get_attribute_from_dscl('Users', 'ShadowHashData')
-      return '*' if shadow_hash_data.empty?
-      embedded_binary_plist = get_embedded_binary_plist(shadow_hash_data)
-      if embedded_binary_plist['SALTED-SHA512']
-        get_salted_sha512(embedded_binary_plist)
-      else
-        get_salted_sha512_pbkdf2('entropy', embedded_binary_plist)
       end
     end
   end
@@ -269,33 +261,11 @@ Puppet::Type.type(:user).provide :osx do
     end
   end
 
-  def iterations
-    if (Puppet::Util::Package.versioncmp(Facter.value(:macosx_productversion_major), '10.7') > 0)
-      shadow_hash_data = get_attribute_from_dscl('Users', 'ShadowHashData')
-      return nil if shadow_hash_data.empty?
-      embedded_binary_plist = get_embedded_binary_plist(shadow_hash_data)
-      if embedded_binary_plist['SALTED-SHA512-PBKDF2']
-        get_salted_sha512_pbkdf2('iterations', embedded_binary_plist)
-      end
-    end
-  end
-
   def iterations=(value)
     if (Puppet::Util::Package.versioncmp(Facter.value(:macosx_productversion_major), '10.7') > 0)
       users_plist = Plist::parse_xml(plutil '-convert', 'xml1', '-o', '/dev/stdout', "#{users_plist_dir}/#{@resource.name}.plist")
       shadow_hash_data = get_shadow_hash_data(users_plist)
       set_salted_pbkdf2(users_plist, shadow_hash_data, 'iterations', value)
-    end
-  end
-
-  def salt
-    if (Puppet::Util::Package.versioncmp(Facter.value(:macosx_productversion_major), '10.7') > 0)
-      shadow_hash_data = get_attribute_from_dscl('Users', 'ShadowHashData')
-      return nil if shadow_hash_data.empty?
-      embedded_binary_plist = get_embedded_binary_plist(shadow_hash_data)
-      if embedded_binary_plist['SALTED-SHA512-PBKDF2']
-        get_salted_sha512_pbkdf2('salt', embedded_binary_plist)
-      end
     end
   end
 
@@ -326,20 +296,20 @@ Puppet::Type.type(:user).provide :osx do
     '/var/db/shadow/hash'
   end
 
-  def get_list_of_groups
+  def self.get_list_of_groups
     # Use dscl to retrieve an array of hashes containing attributes about all
     # of the local groups on the machine.
-    Plist.parse_xml(dscl '-plist', '.', 'readall', '/Groups')
+    @groups ||= Plist.parse_xml(dscl '-plist', '.', 'readall', '/Groups')
   end
 
-  def get_attribute_from_dscl(path, keyname)
+  def self.get_attribute_from_dscl(path, username, keyname)
     # Perform a dscl lookup at the path specified for the specific keyname
     # value. The value returned is the first item within the array returned
     # from dscl
-    Plist.parse_xml(dscl '-plist', '.', 'read', "/#{path}/#{@resource.name}", keyname)
+    Plist.parse_xml(dscl '-plist', '.', 'read', "/#{path}/#{username}", keyname)
   end
 
-  def get_embedded_binary_plist(shadow_hash_data)
+  def self.get_embedded_binary_plist(shadow_hash_data)
     # The plist embedded in the ShadowHashData key is a binary plist. The
     # facter/util/plist library doesn't read binary plists, so we need to
     # extract the binary plist, convert it to XML, and return it.
@@ -347,7 +317,7 @@ Puppet::Type.type(:user).provide :osx do
     convert_binary_to_xml(embedded_binary_plist)
   end
 
-  def convert_xml_to_binary(plist_data)
+  def self.convert_xml_to_binary(plist_data)
     # This method will accept a hash that has been returned from Plist::parse_xml
     # and convert it to a binary plist (string value).
     Puppet.debug('Converting XML plist to binary')
@@ -360,7 +330,7 @@ Puppet::Type.type(:user).provide :osx do
     @converted_plist
   end
 
-  def convert_binary_to_xml(plist_data)
+  def self.convert_binary_to_xml(plist_data)
     # This method will accept a binary plist (as a string) and convert it to a
     # hash via Plist::parse_xml.
     Puppet.debug('Converting binary plist to XML')
@@ -388,13 +358,13 @@ Puppet::Type.type(:user).provide :osx do
     end
   end
 
-  def get_salted_sha512(embedded_binary_plist)
+  def self.get_salted_sha512(embedded_binary_plist)
     # The salted-SHA512 password hash in 10.7 is stored in the 'SALTED-SHA512'
     # key as binary data. That data is extracted and converted to a hex string.
     embedded_binary_plist['SALTED-SHA512'].string.unpack("H*")[0]
   end
 
-  def get_salted_sha512_pbkdf2(field, embedded_binary_plist)
+  def self.get_salted_sha512_pbkdf2(field, embedded_binary_plist)
     # This method reads the passed embedded_binary_plist hash and returns values
     # according to which field is passed.  Arguments passed are the hash
     # containing the value read from the 'ShadowHashData' key in the User's
@@ -447,7 +417,7 @@ Puppet::Type.type(:user).provide :osx do
     # ShadowHashData key of a user's plist, or false if it doesn't exist.
     if users_plist['ShadowHashData']
       password_hash_plist  = users_plist['ShadowHashData'][0].string
-      convert_binary_to_xml(password_hash_plist)
+      self.class.convert_binary_to_xml(password_hash_plist)
     else
       false
     end
@@ -463,7 +433,7 @@ Puppet::Type.type(:user).provide :osx do
       shadow_hash_data['SALTED-SHA512'] = StringIO.new
     end
     shadow_hash_data['SALTED-SHA512'].string = Base64.decode64([[value].pack("H*")].pack("m").strip)
-    binary_plist = convert_xml_to_binary(shadow_hash_data)
+    binary_plist = self.class.convert_xml_to_binary(shadow_hash_data)
     users_plist['ShadowHashData'][0].string = binary_plist
     write_users_plist_to_disk(users_plist)
   end
@@ -495,7 +465,7 @@ Puppet::Type.type(:user).provide :osx do
 
     # Convert shadow_hash_data to a binary plist, write that value to the
     # users_plist hash, and write the users_plist back to disk.
-    binary_plist = convert_xml_to_binary(shadow_hash_data)
+    binary_plist = self.class.convert_xml_to_binary(shadow_hash_data)
     users_plist['ShadowHashData'][0].string = binary_plist
     write_users_plist_to_disk(users_plist)
   end
