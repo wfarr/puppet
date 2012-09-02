@@ -2,11 +2,11 @@
 require 'spec_helper'
 require 'facter/util/plist'
 
-describe Puppet::Type.type(:user).provider(:osx) do
+describe Puppet::Type.type(:user).provider(:directoryservice) do
   let(:resource) do
     Puppet::Type.type(:user).new(
       :name => 'nonexistant_user',
-      :provider => :osx
+      :provider => :directoryservice
     )
   end
 
@@ -168,7 +168,7 @@ describe Puppet::Type.type(:user).provider(:osx) do
     let(:resource_with_groups) do
       Puppet::Type.type(:user).new(
         :name     => 'nonexistant_user',
-        :provider => :osx,
+        :provider => :directoryservice,
         :groups   => 'groups'
       )
     end
@@ -229,7 +229,7 @@ describe Puppet::Type.type(:user).provider(:osx) do
     let(:user_plist_resource) do
       {
         :ensure   => :present,
-        :provider => :osx,
+        :provider => :directoryservice,
         :comment  => 'testuser',
         :name     => 'testuser',
         :uid      => 1000,
