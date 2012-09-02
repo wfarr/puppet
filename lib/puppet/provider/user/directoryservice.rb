@@ -360,7 +360,12 @@ Puppet::Type.type(:user).provide :directoryservice do
   # the case we rescue the error from dscl and alert the user.
   ['home', 'uid', 'gid', 'comment', 'shell'].each do |setter_method|
     define_method("#{setter_method}=") do |value|
-      dscl '.', '-change', "/Users/#{resource.name}", self.class.ns_to_ds_attribute_map[setter_method.intern], @property_hash[setter_method.intern], value
+      begin
+        dscl '.', '-change', "/Users/#{resource.name}", self.class.ns_to_ds_attribute_map[setter_method.intern], @property_hash[setter_method.intern], value
+      rescue => e
+        fail("Cannot set the #{setter_method} value of '#{value}' for user " +
+             "#{@resource.name} due to the following error: #{e.inspect}")
+      end
     end
   end
 
