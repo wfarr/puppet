@@ -113,8 +113,8 @@ Puppet::Type.type(:user).provide :directoryservice do
       end
       attribute_hash[ds_to_ns_attribute_map[ds_attribute]] = ds_value
     end
-    attribute_hash[:ensure] = :present
-    attribute_hash[:provider] = :directoryservice
+    attribute_hash[:ensure]         = :present
+    attribute_hash[:provider]       = :directoryservice
     attribute_hash[:shadowhashdata] = get_attribute_from_dscl('Users', attribute_hash[:name], 'ShadowHashData')
 
     #####
@@ -140,8 +140,8 @@ Puppet::Type.type(:user).provide :directoryservice do
         if embedded_binary_plist['SALTED-SHA512']
           attribute_hash[:password] = get_salted_sha512(embedded_binary_plist)
         else
-          attribute_hash[:password] = get_salted_sha512_pbkdf2('entropy', embedded_binary_plist)
-          attribute_hash[:salt] = get_salted_sha512_pbkdf2('salt', embedded_binary_plist)
+          attribute_hash[:password]   = get_salted_sha512_pbkdf2('entropy', embedded_binary_plist)
+          attribute_hash[:salt]       = get_salted_sha512_pbkdf2('salt', embedded_binary_plist)
           attribute_hash[:iterations] = get_salted_sha512_pbkdf2('iterations', embedded_binary_plist)
         end
       end
