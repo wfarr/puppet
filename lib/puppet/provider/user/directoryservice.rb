@@ -1,9 +1,10 @@
 ## TODO LIST ##
 #1. Tests
-#2. Check individual getter/setter methods with Puppet manifests
-##  - including home, gid, comment, and shell
+#2. The password property is the ONLY property to NOT use dscl when setting
+#    its value (no sane way without passing cleartext password). Because of
+#    this, we need to flush the dscl cache after setting the pw property (or
+#    else a second run is needed to actually CHANGE the value).
 #3. Make sure gid doesn't show up in groups - even with changes
-#4. Fix create method to pass guid for 10.5/10.6 passwords
 
 require 'puppet'
 require 'facter/util/plist'
