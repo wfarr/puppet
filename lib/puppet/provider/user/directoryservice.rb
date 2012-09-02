@@ -168,7 +168,11 @@ Puppet::Type.type(:user).provide :directoryservice do
 ##                   ##
 
   def exists?
-    @resource.name == @property_hash[:name] ? true : false
+    begin
+      return true if dscl '.', 'read', "/Users/#{@resource.name}"
+    rescue
+      return false
+    end
   end
 
   def create
