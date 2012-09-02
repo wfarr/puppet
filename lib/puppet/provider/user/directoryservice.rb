@@ -33,21 +33,7 @@ Puppet::Type.type(:user).provide :directoryservice do
   mk_resource_methods
 
   # JJM: OS X can manage passwords.
-  #      This needs to be a special option to dscl though (-passwd)
   has_feature :manages_passwords
-
-  # JJM: comment matches up with the /etc/passwd concept of an user
-  #options :comment, :key => "realname"
-  #options :password, :key => "passwd"
-  #autogen_defaults :home => "/var/empty", :shell => "/usr/bin/false"
-
-  #verify :gid, "GID must be an integer" do |value|
-  #  value.is_a? Integer
-  #end
-
-  #verify :uid, "UID must be an integer" do |value|
-  #  value.is_a? Integer
-  #end
 
 ##                  ##
 ## Instance Methods ##
