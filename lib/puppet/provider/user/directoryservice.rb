@@ -36,7 +36,7 @@ Puppet::Type.type(:user).provide :directoryservice do
   has_feature :manages_passwords
 
 ##                  ##
-## Instance Methods ##
+## Class Methods ##
 ##                  ##
 
   def self.ds_to_ns_attribute_map
@@ -272,6 +272,21 @@ Puppet::Type.type(:user).provide :directoryservice do
     end
   end
 
+  #####
+  # Dynamically create setter methods for dscl properties
+  #####
+  #
+  # Setter methods are only called when a resource currently has a value for
+  # that property and it needs changed (true here since all of these values
+  # have a default that is set in the create method). We don't want to merge
+  # in additional values if an incorrect value is set, we want to CHANGE it.
+  # When using the -change argument in dscl, the old value needs to be passed
+  # first (followed by the new value). Because of this, we get the current
+  # value from the @property_hash variable and then use the value passed as
+  # the new value. Because we're prefetching instances of the provider, it's
+  # possible that the value determined at the start of the run may be stale
+  # (i.e. someone changed the value by hand during a Puppet run) - if that's
+  # the case we rescue the error from dscl and alert the user.
   ['home', 'uid', 'gid', 'comment', 'shell'].each do |setter_method|
     define_method("#{setter_method}=") do |value|
       dscl '.', '-change', "/Users/#{resource.name}", self.class.ns_to_ds_attribute_map[setter_method.intern], @property_hash[setter_method.intern], value
