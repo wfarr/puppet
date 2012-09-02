@@ -23,6 +23,7 @@ Puppet::Type.type(:user).provide :directoryservice do
   commands :dsimport => '/usr/bin/dsimport'
   commands :dscl     => '/usr/bin/dscl'
   commands :plutil   => '/usr/bin/plutil'
+  commands :killall  => '/usr/bin/killall'
 
   # Provider confines and defaults
   confine    :operatingsystem => :darwin
@@ -490,6 +491,7 @@ Puppet::Type.type(:user).provide :directoryservice do
     # the plist to a binary format, and flush the dscl cache.
     Plist::Emit.save_plist(users_plist, "#{users_plist_dir}/#{@resource.name}.plist")
     plutil'-convert', 'binary1', "#{users_plist_dir}/#{@resource.name}.plist"
+    killall '-HUP', 'opendirectoryd'
     # Restart directoryservices or opendirectoryd
     # OR dscacheutil -cachedump
     # OR sleep 5
