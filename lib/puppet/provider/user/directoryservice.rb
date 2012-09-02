@@ -75,6 +75,17 @@ Puppet::Type.type(:user).provide :directoryservice do
     @ns_to_ds_attribute_map ||= ds_to_ns_attribute_map.invert
   end
 
+  #  Prefetching is necessary to use @property_hash inside any setter methods
+  #  Of course, it takes forever to prefetch resources...
+  def self.prefetch(resources)
+    instances.each do |prov|
+      if resource = resources[prov.name]
+        resource.provider = prov
+      end
+    end
+  end
+
+  # self.instances is necessary for Puppet Resource...I believe
   def self.instances
     # This method assembles an array of provider instances containing
     # information about every instance of the user type on the system (i.e.
@@ -272,7 +283,7 @@ Puppet::Type.type(:user).provide :directoryservice do
 
   ['home', 'uid', 'gid', 'comment', 'shell'].each do |setter_method|
     define_method("#{setter_method}=") do |value|
-      dscl '-merge', "/Users/#{resource.name}", self.class.ns_to_ds_attribute_map[setter_method.intern], value
+      dscl '.', '-change', "/Users/#{resource.name}", self.class.ns_to_ds_attribute_map[setter_method.intern], @property_hash[setter_method.intern], value
     end
   end
 
