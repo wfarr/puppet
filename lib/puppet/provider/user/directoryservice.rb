@@ -150,6 +150,77 @@ Puppet::Type.type(:user).provide :directoryservice do
     attribute_hash
   end
 
+  def self.get_list_of_groups
+    # Use dscl to retrieve an array of hashes containing attributes about all
+    # of the local groups on the machine.
+    @groups ||= Plist.parse_xml(dscl '-plist', '.', 'readall', '/Groups')
+  end
+
+  def self.get_attribute_from_dscl(path, username, keyname)
+    # Perform a dscl lookup at the path specified for the specific keyname
+    # value. The value returned is the first item within the array returned
+    # from dscl
+    Plist.parse_xml(dscl '-plist', '.', 'read', "/#{path}/#{username}", keyname)
+  end
+
+  def self.get_embedded_binary_plist(shadow_hash_data)
+    # The plist embedded in the ShadowHashData key is a binary plist. The
+    # facter/util/plist library doesn't read binary plists, so we need to
+    # extract the binary plist, convert it to XML, and return it.
+    embedded_binary_plist = Array(shadow_hash_data['dsAttrTypeNative:ShadowHashData'][0].delete(' ')).pack('H*')
+    convert_binary_to_xml(embedded_binary_plist)
+  end
+
+  def self.convert_xml_to_binary(plist_data)
+    # This method will accept a hash that has been returned from Plist::parse_xml
+    # and convert it to a binary plist (string value).
+    Puppet.debug('Converting XML plist to binary')
+    Puppet.debug('Executing: \'plutil -convert binary1 -o - -\'')
+    IO.popen('plutil -convert binary1 -o - -', mode='r+') do |io|
+      io.write Plist::Emit.dump(plist_data)
+      io.close_write
+      @converted_plist = io.read
+    end
+    @converted_plist
+  end
+
+  def self.convert_binary_to_xml(plist_data)
+    # This method will accept a binary plist (as a string) and convert it to a
+    # hash via Plist::parse_xml.
+    Puppet.debug('Converting binary plist to XML')
+    Puppet.debug('Executing: \'plutil -convert xml1 -o - -\'')
+    IO.popen('plutil -convert xml1 -o - -', mode='r+') do |io|
+      io.write plist_data
+      io.close_write
+      @converted_plist = io.read
+    end
+    Puppet.debug('Converting XML values to a hash.')
+    Plist::parse_xml(@converted_plist)
+  end
+
+  def self.get_salted_sha512(embedded_binary_plist)
+    # The salted-SHA512 password hash in 10.7 is stored in the 'SALTED-SHA512'
+    # key as binary data. That data is extracted and converted to a hex string.
+    embedded_binary_plist['SALTED-SHA512'].string.unpack("H*")[0]
+  end
+
+  def self.get_salted_sha512_pbkdf2(field, embedded_binary_plist)
+    # This method reads the passed embedded_binary_plist hash and returns values
+    # according to which field is passed.  Arguments passed are the hash
+    # containing the value read from the 'ShadowHashData' key in the User's
+    # plist, and the field to be read (one of 'entropy', 'salt', or 'iterations')
+    case field
+    when 'salt', 'entropy'
+      embedded_binary_plist['SALTED-SHA512-PBKDF2'][field].string.unpack('H*').first
+    when 'iterations'
+      Integer(embedded_binary_plist['SALTED-SHA512-PBKDF2'][field])
+    else
+      fail('Puppet has tried to read an incorrect value from the ' +
+           "SALTED-SHA512-PBKDF2 hash. Acceptable fields are 'salt', " +
+           "'entropy', or 'iterations'.")
+    end
+  end
+
 ##                   ##
 ## Ensurable Methods ##
 ##                   ##
@@ -306,54 +377,6 @@ Puppet::Type.type(:user).provide :directoryservice do
     '/var/db/shadow/hash'
   end
 
-  def self.get_list_of_groups
-    # Use dscl to retrieve an array of hashes containing attributes about all
-    # of the local groups on the machine.
-    @groups ||= Plist.parse_xml(dscl '-plist', '.', 'readall', '/Groups')
-  end
-
-  def self.get_attribute_from_dscl(path, username, keyname)
-    # Perform a dscl lookup at the path specified for the specific keyname
-    # value. The value returned is the first item within the array returned
-    # from dscl
-    Plist.parse_xml(dscl '-plist', '.', 'read', "/#{path}/#{username}", keyname)
-  end
-
-  def self.get_embedded_binary_plist(shadow_hash_data)
-    # The plist embedded in the ShadowHashData key is a binary plist. The
-    # facter/util/plist library doesn't read binary plists, so we need to
-    # extract the binary plist, convert it to XML, and return it.
-    embedded_binary_plist = Array(shadow_hash_data['dsAttrTypeNative:ShadowHashData'][0].delete(' ')).pack('H*')
-    convert_binary_to_xml(embedded_binary_plist)
-  end
-
-  def self.convert_xml_to_binary(plist_data)
-    # This method will accept a hash that has been returned from Plist::parse_xml
-    # and convert it to a binary plist (string value).
-    Puppet.debug('Converting XML plist to binary')
-    Puppet.debug('Executing: \'plutil -convert binary1 -o - -\'')
-    IO.popen('plutil -convert binary1 -o - -', mode='r+') do |io|
-      io.write Plist::Emit.dump(plist_data)
-      io.close_write
-      @converted_plist = io.read
-    end
-    @converted_plist
-  end
-
-  def self.convert_binary_to_xml(plist_data)
-    # This method will accept a binary plist (as a string) and convert it to a
-    # hash via Plist::parse_xml.
-    Puppet.debug('Converting binary plist to XML')
-    Puppet.debug('Executing: \'plutil -convert xml1 -o - -\'')
-    IO.popen('plutil -convert xml1 -o - -', mode='r+') do |io|
-      io.write plist_data
-      io.close_write
-      @converted_plist = io.read
-    end
-    Puppet.debug('Converting XML values to a hash.')
-    Plist::parse_xml(@converted_plist)
-  end
-
   def next_system_id(min_id=20)
     # Get the next available uid on the system by getting a list of user ids,
     # sorting them, grabbing the last one, and adding a 1. Scientific stuff here.
@@ -365,29 +388,6 @@ Puppet::Type.type(:user).provide :directoryservice do
     ids.each_index do |i|
       next_id = ids[i] + 1
       return next_id if ids[i+1] != next_id and next_id >= min_id
-    end
-  end
-
-  def self.get_salted_sha512(embedded_binary_plist)
-    # The salted-SHA512 password hash in 10.7 is stored in the 'SALTED-SHA512'
-    # key as binary data. That data is extracted and converted to a hex string.
-    embedded_binary_plist['SALTED-SHA512'].string.unpack("H*")[0]
-  end
-
-  def self.get_salted_sha512_pbkdf2(field, embedded_binary_plist)
-    # This method reads the passed embedded_binary_plist hash and returns values
-    # according to which field is passed.  Arguments passed are the hash
-    # containing the value read from the 'ShadowHashData' key in the User's
-    # plist, and the field to be read (one of 'entropy', 'salt', or 'iterations')
-    case field
-    when 'salt', 'entropy'
-      embedded_binary_plist['SALTED-SHA512-PBKDF2'][field].string.unpack('H*').first
-    when 'iterations'
-      Integer(embedded_binary_plist['SALTED-SHA512-PBKDF2'][field])
-    else
-      fail('Puppet has tried to read an incorrect value from the ' +
-           "SALTED-SHA512-PBKDF2 hash. Acceptable fields are 'salt', " +
-           "'entropy', or 'iterations'.")
     end
   end
 
