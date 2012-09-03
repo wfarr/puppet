@@ -5,6 +5,7 @@
 #    this, we need to flush the dscl cache after setting the pw property (or
 #    else a second run is needed to actually CHANGE the value).
 #3. Make sure gid doesn't show up in groups - even with changes
+#4. Setting a gid based on name versus GID
 
 require 'puppet'
 require 'facter/util/plist'
@@ -264,6 +265,12 @@ Puppet::Type.type(:user).provide :directoryservice do
         value = @resource.name if attribute == :comment
         value = '/bin/bash' if attribute == :shell
         value = "/Users/#{@resource.name}" if attribute == :home
+      end
+
+      # If a non-numerical gid value is passed, assume it is a group name and
+      # lookup that group's GID value to use when setting the GID
+      if (attribute == :gid) and (not(value =~ /^[-0-9]+$/))
+        value = self.class.get_attribute_from_dscl('Groups', value, 'PrimaryGroupID')['dsAttrTypeStandard:PrimaryGroupID'][0]
       end
 
       ## Set values ##
