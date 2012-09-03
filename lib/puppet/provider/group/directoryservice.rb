@@ -3,7 +3,7 @@ require 'facter/util/plist'
 require 'fileutils'
 require 'pp'
 
-Puppet::Type.type(:group).provide :osx do
+Puppet::Type.type(:group).provide :directoryservice do
   desc "Group management on OS X."
 
   commands :dscl => "/usr/bin/dscl"
@@ -66,8 +66,8 @@ Puppet::Type.type(:group).provide :osx do
       end
       attribute_hash[ds_to_ns_attribute_map[ds_attribute]] = ds_value
     end
-    attribute_hash[:ensure] = :present
-    attribute_hash[:provider] = :osx
+    attribute_hash[:ensure]   = :present
+    attribute_hash[:provider] = :directoryservice
     attribute_hash
   end
 
