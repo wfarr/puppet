@@ -88,6 +88,13 @@ Puppet::Type.type(:group).provide :directoryservice do
     end
   end
 
+  def self.get_attribute_from_dscl(path, username, keyname)
+    # Perform a dscl lookup at the path specified for the specific keyname
+    # value. The value returned is the first item within the array returned
+    # from dscl
+    Plist.parse_xml(dscl '-plist', '.', 'read', "/#{path}/#{username}", keyname)
+  end
+
 ##                   ##
 ## Ensurable Methods ##
 ##                   ##
