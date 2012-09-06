@@ -6,8 +6,9 @@ require 'pp'
 Puppet::Type.type(:group).provide :directoryservice do
   desc "Group management on OS X."
 
-  commands :dscl    => "/usr/bin/dscl"
-  commands :uuidgen => "/usr/bin/uuidgen"
+  commands :dscl        => "/usr/bin/dscl"
+  commands :uuidgen     => "/usr/bin/uuidgen"
+  commands :dseditgroup => 'dseditgroup'
 
   confine :operatingsystem => :darwin
   defaultfor :operatingsystem => :darwin
@@ -125,7 +126,14 @@ Puppet::Type.type(:group).provide :directoryservice do
           when :guid
             dscl '.', '-changei', "/Groups/#{@resource.name}", self.class.ns_to_ds_attribute_map[attribute], '1', @guid
           when :members
-            value.each do |group|
+            value.each do |user|
+              #begin
+              #  dseditgroup '-o edit -n . -a', user,  '-t user', @resource.name
+              #rescue Puppet::ExecutionFailure => e
+              #  debug("dseditgroup attempted to add the user #{user} to the " +
+              #        "#{@resource.name} group, but that user did not exist.")
+              #  puts e.inspect
+              #end
               dscl '.', '-merge', "/Groups/#{@resource.name}", 'GroupMembership', group
             end
           else
