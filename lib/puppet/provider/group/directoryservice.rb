@@ -1,3 +1,9 @@
+# TODO:
+# 1. Should we validate users before adding as members?
+# 2. If we're doing GUIDs in groupmembers - should we tie that to members?
+#    Should we also validate those GUIDs too?
+# 3. Tests
+
 require 'puppet'
 require 'facter/util/plist'
 require 'fileutils'
